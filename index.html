@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BREACHPOINT</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="BREACHPOINT — a free browser tactical shooter with leaning, destructible walls and bots. Plays on PC and mobile.">
+<meta name="theme-color" content="#07090c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090c'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%233fa7ff' stroke-width='3'/%3E%3Cpath d='M16 2v8M16 22v8M2 16h8M22 16h8' stroke='%23eef2f5' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="mods.css">
+</head>
+<body>
+<div id="loading"><div class="ltitle">BREACHPOINT</div><div id="loadMsg">Generating textures…</div></div>
+
+<!-- ============ HUD ============ -->
+<div id="hud">
+  <div id="vignette"></div>
+  <div id="hurt"></div>
+  <div id="scopeShade"></div>
+  <canvas id="esp"></canvas>
+  <div id="modsTag"></div>
+
+  <div id="top">
+    <div class="icons" id="atkIcons"></div>
+    <div class="score atk" id="scoreAtk">0</div>
+    <div id="timerBox"><div id="roundLabel">ROUND 1</div><div id="timer">3:00</div></div>
+    <div class="score def" id="scoreDef">0</div>
+    <div class="icons" id="defIcons"></div>
+  </div>
+
+  <div id="objMarker"><div class="diamond"></div><div id="objDist">OBJECTIVE</div></div>
+  <div id="secure"><div id="secureLabel">SECURING AREA</div><div class="bar"><div id="secureFill"></div></div></div>
+
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="c"></i></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="dmgInd"></div>
+
+  <div id="killfeed"></div>
+  <div id="callouts"></div>
+
+  <div id="bl">
+    <div id="opName">YOU</div>
+    <div id="hpRow"><div id="hpNum">100</div><div id="hpBar"><div id="hpFill"></div></div></div>
+    <div id="stance"></div>
+  </div>
+
+  <div id="br">
+    <div id="weaponName">AR-7 CARBINE</div>
+    <div id="ammoRow"><span id="mag">30</span><span id="reserve">150</span></div>
+    <div id="gadget"><span class="gIcon"></span><span id="gadgetCount">x2</span> <span class="key">G</span></div>
+  </div>
+
+  <div id="leanL" class="leanInd">&#9664;</div>
+  <div id="leanR" class="leanInd">&#9654;</div>
+
+  <div id="center"><div id="bigMsg"></div><div id="subMsg"></div></div>
+  <div id="hint"></div>
+  <div id="spectate"></div>
+  <div id="abilityStatus"></div>
+  <div id="intelMarkers"></div>
+  <div id="reconFeed">
+    <div id="reconTitle"></div><div id="reconStatus"></div>
+    <div class="reconHelp pcOnly">WASD DRIVE · SPACE JUMP · SHIFT BOOST (2s / 6s cooldown)<br>CLICK / X SCAN · Q / E CAMERAS · 1 RETURN TO OPERATOR</div>
+    <div class="feedReticle">+</div>
+  </div>
+
+  <div id="scoreboard">
+    <div class="sbTitle">SCOREBOARD</div>
+    <table><thead><tr><th>OPERATOR</th><th>K</th><th>D</th><th>STATUS</th></tr></thead><tbody id="sbBody"></tbody></table>
+  </div>
+</div>
+
+<!-- ============ TOUCH CONTROLS ============ -->
+<div id="touch">
+  <div id="joyBase"><div id="joyKnob"></div><div class="sprintTag">SPRINT</div></div>
+  <div class="tbar">
+    <div class="tb small" data-act="pause">&#10074;&#10074;</div>
+    <div class="tb small" data-act="score">TAB</div>
+    <div class="tb small" data-act="mods">MODS</div>
+  </div>
+  <div class="tb fireL" data-act="fire"><span class="ico fireIco"></span></div>
+  <div class="utilityBar"><div class="tb" data-act="cams">CAMS</div><div class="tb" data-act="drone">DRONE</div><div class="tb" data-act="ability">ABILITY</div></div>
+  <div id="reconTouch">
+    <div class="tb" data-act="prevCam">◀ CAM</div><div class="tb" data-act="nextCam">CAM ▶</div>
+    <div class="tb" data-act="jump">JUMP</div><div class="tb" data-act="boost">BOOST</div>
+    <div class="tb" data-act="scan">SCAN</div><div class="tb" data-act="exitRecon">EXIT</div>
+  </div>
+  <div id="tCluster">
+    <div class="tb fire" data-act="fire"><span class="ico fireIco"></span></div>
+    <div class="tb" id="tAds" data-act="ads">AIM</div>
+    <div class="tb" id="tLeanL" data-act="leanL">&#9664;</div>
+    <div class="tb" id="tLeanR" data-act="leanR">&#9654;</div>
+    <div class="tb" id="tCrouch" data-act="crouch">CRCH</div>
+    <div class="tb" data-act="jump">JUMP</div>
+    <div class="tb" data-act="reload">R</div>
+    <div class="tb" data-act="melee">MELEE</div>
+    <div class="tb" data-act="nade"><span class="gIcon"></span><b id="tNadeN">2</b></div>
+    <div class="tb" data-act="swap">SWAP</div>
+  </div>
+</div>
+<button id="prepStart">START ACTION · ENTER</button>
+<div id="rotate"><div>&#8635;</div>Rotate your device to landscape</div>
+
+<!-- ============ MODS ============ -->
+<div id="mods">
+  <div class="mbox">
+    <div class="mhead">
+      <div class="logo small">HACKER LOADOUT</div>
+      <div class="small">Hacker Arena only. Every bot cheats too. No god mode, noclip, or one-shot toggle.</div>
+    </div>
+    <div id="modsBody"></div>
+    <div class="mfoot">
+      <button id="modsReset" class="ghost">RESET ALL</button>
+      <button id="modsClose">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MENU ============ -->
+<div id="menu">
+  <div id="menuInner">
+    <div class="brand">
+      <div class="logo">BREACH<span>POINT</span></div>
+      <div class="tag">TACTICAL CLOSE-QUARTERS ASSAULT</div>
+    </div>
+    <div class="cols">
+      <div class="panel">
+        <h3>GAME MODE</h3>
+        <div class="choices" id="modeChoices">
+          <button data-mode="secure" class="sel"><b>SECURE AREA</b><small>30s drone prep · 3 attackers vs 4 defenders · Cheats disabled</small></button>
+          <button data-mode="hacker"><b>CUSTOM: HACKER ARENA</b><small>You vs 6 cheating bots · Free-for-all · First to 3 round wins · No god mode</small></button>
+        </div>
+        <h3>OPERATOR · F TO USE ABILITY</h3>
+        <div class="choices operatorChoices" id="operatorChoices">
+          <button data-op="sledge" class="sel"><b>SLEDGE</b><small>Hammer · 12 uses · Smashes soft walls and barricades up close</small></button>
+          <button data-op="ash"><b>ASH</b><small>2 breaching rounds · Ranged soft-wall and gadget destruction</small></button>
+          <button data-op="doc"><b>DOC</b><small>3 stims · Heal yourself or an aimed-at teammate by 60 HP</small></button>
+          <button data-op="pulse"><b>PULSE</b><small>Heartbeat sensor · Detect enemies through walls within 9m</small></button>
+        </div>
+        <h3>PRIMARY WEAPON</h3>
+        <div class="choices" id="wChoices">
+          <button data-w="ar" class="sel"><b>AR-7 CARBINE</b><small>Assault rifle · 720 RPM · Red dot</small></button>
+          <button data-w="smg"><b>K9 SMG</b><small>Submachine gun · 900 RPM · Holo</small></button>
+          <button data-w="sg"><b>M12 BREACHER</b><small>Pump shotgun · Wrecks walls</small></button>
+        </div>
+        <h3>BOT DIFFICULTY</h3>
+        <div class="choices row" id="dChoices">
+          <button data-d="recruit">RECRUIT</button>
+          <button data-d="regular" class="sel">REGULAR</button>
+          <button data-d="veteran">VETERAN</button>
+        </div>
+        <h3>MAP</h3>
+        <div class="choices mapChoices" id="mapChoices">
+          <button data-map="harbor" class="sel"><b>HARBOR STREET OFFICES</b><small>Office block · Server Room</small></button>
+          <button data-map="warehouse"><b>CANAL WAREHOUSE</b><small>Container hall · Control Room</small></button>
+          <button data-map="chalet"><b>SNOWPINE CHALET</b><small>Mountain lodge · Trophy Room</small></button>
+        </div>
+        <h3>FRIENDLY FIRE</h3>
+        <div class="choices row" id="ffChoices">
+          <button data-f="off">OFF</button>
+          <button data-f="on">ON — TEAM KILLS</button>
+        </div>
+        <button id="deployBtn">DEPLOY</button>
+        <button id="modsBtn" class="modsBtn">HACKER ARENA LOADOUT</button>
+        <div class="small">Secure Area: eliminate defenders or hold the objective for 10s.<br>Hacker Arena: last operator alive wins; at time limit, most HP then kills wins. First to 3 round wins.<br>Both modes: drone prep, destructible cameras, and operator abilities.</div>
+      </div>
+      <div class="panel">
+        <h3>SETTINGS</h3>
+        <label>Mouse sensitivity <span id="sensVal"></span><input type="range" id="sens" min="0.2" max="4" step="0.05"></label>
+        <label>ADS sensitivity multiplier <span id="adsSensVal"></span><input type="range" id="adsSens" min="0.3" max="1.2" step="0.05"></label>
+        <label>Field of view <span id="fovVal"></span><input type="range" id="fov" min="65" max="100" step="1"></label>
+        <label>Volume <span id="volVal"></span><input type="range" id="vol" min="0" max="1" step="0.05"></label>
+        <div class="optRow">Lean mode
+          <div class="choices row mini" id="leanChoices"><button data-l="hold">HOLD</button><button data-l="toggle">TOGGLE</button></div>
+        </div>
+        <div class="optRow">Graphics
+          <div class="choices row mini" id="gfxChoices"><button data-g="high">HIGH</button><button data-g="low">LOW</button></div>
+        </div>
+        <div class="optRow">Controls
+          <div class="choices row mini" id="ctrlChoices"><button data-c="auto">AUTO</button><button data-c="touch">TOUCH</button><button data-c="keyboard">PC</button></div>
+        </div>
+        <label class="touchOnly">Touch look sensitivity <span id="touchSensVal"></span><input type="range" id="touchSens" min="0.3" max="3" step="0.05"></label>
+        <h3>CONTROLS</h3>
+        <div class="keys touchOnly">
+          <div><span>LEFT</span> Drag to move</div><div><span>EDGE</span> Push stick far = sprint</div>
+          <div><span>RIGHT</span> Drag to look</div><div><span>FIRE</span> Hold + drag to aim</div>
+          <div><span>&#9664; &#9654;</span> Lean toggle</div><div><span>AIM</span> ADS toggle</div>
+        </div>
+        <div class="keys pcOnly">
+          <div><span>WASD</span> Move</div><div><span>SHIFT</span> Sprint</div>
+          <div><span>Q / E</span> Lean left / right</div><div><span>RMB</span> Aim down sights</div>
+          <div><span>LMB</span> Fire</div><div><span>R</span> Reload</div>
+          <div><span>C</span> Crouch</div><div><span>SPACE</span> Jump / vault</div>
+          <div><span>V</span> Melee (breaks barricades)</div><div><span>G</span> Frag grenade</div>
+          <div><span>1 / 2</span> Primary / sidearm</div><div><span>TAB</span> Scoreboard</div>
+          <div><span>5</span> Building cameras · Q / E switch</div><div><span>6</span> Deploy / control drone</div>
+          <div><span>F</span> Operator ability</div><div><span>X</span> Scan from drone / camera</div>
+          <div><span>DRONE</span> Space jump · Shift boost</div><div><span>1</span> Leave drone / camera</div>
+          <div><span>M</span> Mods menu</div><div><span>ESC</span> Pause</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PAUSE ============ -->
+<div id="pause">
+  <div class="pbox">
+    <div class="logo small">PAUSED</div>
+    <button id="resumeBtn">RESUME</button>
+    <button id="pauseModsBtn" class="ghost">MODS</button>
+    <button id="quitBtn" class="ghost">QUIT TO MENU</button>
+    <div class="small pcOnly">Click Resume to re-capture the mouse.</div>
+  </div>
+</div>
+
+<!-- ============ MATCH END ============ -->
+<div id="matchEnd">
+  <div class="pbox">
+    <div class="logo small" id="matchResult">VICTORY</div>
+    <div id="matchScore">3 - 1</div>
+    <button id="againBtn">PLAY AGAIN</button>
+    <button id="menuBtn" class="ghost">MAIN MENU</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script src="js/util.js"></script>
+<script src="js/textures.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/world.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/models.js"></script>
+<script src="js/map.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/player.js"></script>
+<script src="js/bot.js"></script>
+<script src="js/mods.js"></script>
+<script src="js/recon.js"></script>
+<script src="js/operators.js"></script>
+<script src="js/touch.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
