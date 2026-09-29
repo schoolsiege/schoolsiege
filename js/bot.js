@@ -76,6 +76,8 @@
     }
 
     takeDamage(amt, attacker, part, dx, dz) {
+      // on a multiplayer client, bots are puppets owned by the host: report the hit instead of applying it
+      if (this.puppet) { if (this.alive) G.Net.sendHit(this, amt, attacker, part, dx, dz); return; }
       if (!this.alive || G.Game.state !== 'live') return;
       this.hp -= amt;
       this.flinch = Math.min(1.2, this.flinch + 0.45);
@@ -509,6 +511,7 @@
         if (p === 0 || Math.random() < 0.3) G.FX.tracer(mz.x, mz.y, mz.z, end.x, end.y, end.z);
       }
       G.FX.muzzle3P(mz, dir);
+      if (G.Net && G.Net.inGame && end) G.Net.sendShot(this, end, this.def.key);
       G.Audio.shot(def.sound, mz, false);
       G.Game.soundEvent(this.pos, def.sound === 'shotgun' ? 55 : 45, this.team, 'shot');
       if (!G.Game.hackerMode) {
@@ -523,6 +526,7 @@
 
     // ------------------------------------------------ main update
     update(dt) {
+      if (this.puppet) return this.puppetUpdate(dt);
       if (!this.alive) {
         this.deadT += dt;
         this.lean = G.damp(this.lean, 0, 5, dt);
@@ -591,6 +595,41 @@
         pos: this.pos, yaw: this.aimYaw, speed: Math.hypot(this.vel.x, this.vel.z), fwd, crouch: this.crouch, lean: this.lean,
         pitch: this.aimPitch, dead: false,
       }, dt);
+    }
+    // ---------------------------------------------------------------- multiplayer puppet (client side)
+    netState(a) {
+      const n = (v, d) => (Number.isFinite(v) ? v : d);
+      this.netTarget = { x: n(a[1], this.pos.x), z: n(a[2], this.pos.z), vx: n(a[3], 0), vz: n(a[4], 0), yaw: n(a[5], this.aimYaw), pitch: n(a[6], 0), lean: G.clamp(n(a[7], 0), -1, 1), crouch: G.clamp(n(a[8], 0), 0, 1) };
+      if (this.alive) this.hp = G.clamp(n(a[9], this.hp), 0, 100);
+      this.tRecv = G.time;
+    }
+    netDie() {
+      this.alive = false; this.hp = 0; this.deadT = 0; this.deaths++;
+      const s = Math.random();
+      this.fallDir.set(s < 0.55 ? 1 : s < 0.8 ? -1 : 0, 0, s >= 0.8 ? (Math.random() < 0.5 ? 1 : -1) : G.rand(-0.3, 0.3));
+    }
+    puppetUpdate(dt) {
+      if (!this.alive) {
+        this.deadT += dt;
+        G.animateCharacter(this.model, { pos: this.pos, yaw: this.aimYaw, dead: true, deadT: this.deadT, fallDir: this.fallDir, lean: 0, crouch: 0, speed: 0, pitch: 0 }, dt);
+        return;
+      }
+      const t = this.netTarget;
+      if (t) {
+        const age = Math.min(0.25, G.time - (this.tRecv || 0));
+        const tx = t.x + t.vx * age, tz = t.z + t.vz * age;
+        if (Math.hypot(tx - this.pos.x, tz - this.pos.z) > 4) { this.pos.x = tx; this.pos.z = tz; }
+        this.pos.x = G.damp(this.pos.x, tx, 14, dt); this.pos.z = G.damp(this.pos.z, tz, 14, dt);
+        this.vel.set(t.vx, 0, t.vz);
+        this.aimYaw = G.dampAngle(this.aimYaw, t.yaw, 18, dt);
+        this.aimPitch = G.damp(this.aimPitch, t.pitch, 18, dt);
+        this.lean = G.damp(this.lean, t.lean, 14, dt);
+        this.crouch = G.damp(this.crouch, t.crouch, 12, dt);
+      }
+      this.yaw = this.aimYaw;
+      G.updateHitShapes(this);
+      const fwd = this.vel.x * -Math.sin(this.yaw) + this.vel.z * -Math.cos(this.yaw);
+      G.animateCharacter(this.model, { pos: this.pos, yaw: this.aimYaw, speed: Math.hypot(this.vel.x, this.vel.z), fwd, crouch: this.crouch, lean: this.lean, pitch: this.aimPitch, dead: false }, dt);
     }
     roleLogicLook() {
       const s = this.data.spot;

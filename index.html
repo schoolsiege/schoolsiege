@@ -10,14 +10,16 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307090c'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%233fa7ff' stroke-width='3'/%3E%3Cpath d='M16 2v8M16 22v8M2 16h8M22 16h8' stroke='%23eef2f5' stroke-width='3'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="mods.css">
+<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="mods.css?v=6">
+<link rel="stylesheet" href="mp.css?v=6">
 </head>
 <body>
 <div id="loading"><div class="ltitle">BREACHPOINT</div><div id="loadMsg">Generating textures…</div></div>
 
 <!-- ============ HUD ============ -->
 <div id="hud">
+  <div id="teamTags"></div>
   <div id="vignette"></div>
   <div id="hurt"></div>
   <div id="scopeShade"></div>
@@ -120,6 +122,88 @@
   </div>
 </div>
 
+<!-- ============ MULTIPLAYER: BROWSER ============ -->
+<div id="mp">
+  <div class="mpbox">
+    <div class="mphead">
+      <div class="logo small">MULTIPLAYER</div>
+      <button id="mpBack" class="ghost">BACK</button>
+    </div>
+    <label class="mpname">Your name <input id="mpName" maxlength="14" autocomplete="off" spellcheck="false"></label>
+    <div class="mpcols">
+      <div class="mpcol">
+        <h3>HOST A LOBBY</h3>
+        <div class="optRow">Mode
+          <div class="choices row mini" id="mpMode"><button data-v="team">TEAM</button><button data-v="duel">1V1</button></div>
+        </div>
+        <div class="optRow">Bots fill empty spots
+          <div class="choices row mini" id="mpBots"><button data-v="true">ON</button><button data-v="false">OFF</button></div>
+        </div>
+        <div class="optRow">Visibility
+          <div class="choices row mini" id="mpPub"><button data-v="true">PUBLIC</button><button data-v="false">PRIVATE</button></div>
+        </div>
+        <div class="small">Uses the map, weapon and operator picked on the main menu. You can change the map in the lobby.</div>
+        <button id="mpHost" class="mpPrimary">CREATE LOBBY</button>
+      </div>
+      <div class="mpcol">
+        <h3>JOIN WITH A CODE</h3>
+        <div class="mpjoin"><input id="mpCode" maxlength="5" placeholder="CODE" autocomplete="off" spellcheck="false"><button id="mpJoin" class="mpPrimary">JOIN</button></div>
+        <h3>PUBLIC LOBBIES <button id="mpRefresh" class="mini">REFRESH</button></h3>
+        <div id="mpList"></div>
+      </div>
+    </div>
+    <div id="mpStatus" class="small"></div>
+    <div class="small">Works across different Wi-Fi networks and devices: players connect directly browser-to-browser. Everyone needs the same version of the game (refresh if unsure).</div>
+  </div>
+</div>
+
+<!-- ============ MULTIPLAYER: LOBBY ROOM ============ -->
+<div id="lobby">
+  <div class="mpbox">
+    <div class="mphead">
+      <div>
+        <div class="small">LOBBY CODE</div>
+        <div id="lbCode" class="lbcode">-----</div>
+      </div>
+      <div class="lbbtns">
+        <button id="lbCopy">COPY INVITE LINK</button>
+        <button id="lbLeave" class="ghost">LEAVE</button>
+      </div>
+    </div>
+    <div id="lbInfo" class="small"></div>
+    <div id="lbHostCtl">
+      <div class="optRow">Mode
+        <div class="choices row mini"><button data-k="mode" data-v="team">TEAM</button><button data-k="mode" data-v="duel">1V1</button></div>
+      </div>
+      <div class="optRow">Map
+        <div class="choices row mini"><button data-k="map" data-v="harbor">HARBOR</button><button data-k="map" data-v="warehouse">WAREHOUSE</button><button data-k="map" data-v="chalet">CHALET</button></div>
+      </div>
+      <div class="optRow">Bots
+        <div class="choices row mini"><button data-k="bots" data-v="true">ON</button><button data-k="bots" data-v="false">OFF</button></div>
+      </div>
+      <div class="optRow">Friendly fire
+        <div class="choices row mini"><button data-k="ff" data-v="false">OFF</button><button data-k="ff" data-v="true">ON</button></div>
+      </div>
+      <div class="optRow">Visibility
+        <div class="choices row mini"><button data-k="pub" data-v="true">PUBLIC</button><button data-k="pub" data-v="false">PRIVATE</button></div>
+      </div>
+    </div>
+    <div class="lbteams">
+      <div class="lbteam atk"><h3>ATTACKERS</h3><div id="lbAtk"></div></div>
+      <div class="lbteam def"><h3>DEFENDERS</h3><div id="lbDef"></div></div>
+    </div>
+    <div class="lbrow">
+      <button id="lbSwitch">SWITCH TEAM</button>
+      <button id="lbStart" class="mpPrimary">START MATCH</button>
+    </div>
+    <div id="lbWait" class="small"></div>
+    <div id="lbChat">
+      <div id="lbMsgs"></div>
+      <input id="lbChatIn" maxlength="120" placeholder="Chat — press Enter to send" autocomplete="off">
+    </div>
+  </div>
+</div>
+
 <!-- ============ MENU ============ -->
 <div id="menu">
   <div id="menuInner">
@@ -132,14 +216,15 @@
         <h3>GAME MODE</h3>
         <div class="choices" id="modeChoices">
           <button data-mode="secure" class="sel"><b>SECURE AREA</b><small>30s drone prep · 3 attackers vs 4 defenders · Cheats disabled</small></button>
+          <button data-mode="duel"><b>1V1 DUEL</b><small>You vs one defender bot · Elimination or secure the room · First to 5 rounds</small></button>
           <button data-mode="hacker"><b>CUSTOM: HACKER ARENA</b><small>You vs 6 cheating bots · Free-for-all · First to 3 round wins · No god mode</small></button>
         </div>
         <h3>OPERATOR · F TO USE ABILITY</h3>
         <div class="choices operatorChoices" id="operatorChoices">
-          <button data-op="sledge" class="sel"><b>SLEDGE</b><small>Hammer · 12 uses · Smashes soft walls and barricades up close</small></button>
-          <button data-op="ash"><b>ASH</b><small>2 breaching rounds · Ranged soft-wall and gadget destruction</small></button>
-          <button data-op="doc"><b>DOC</b><small>3 stims · Heal yourself or an aimed-at teammate by 60 HP</small></button>
-          <button data-op="pulse"><b>PULSE</b><small>Heartbeat sensor · Detect enemies through walls within 9m</small></button>
+          <button data-op="sledge" class="sel"><b>MAUL</b><small>Hammer · 12 uses · Smashes soft walls and barricades up close</small></button>
+          <button data-op="ash"><b>CINDER</b><small>2 breaching rounds · Ranged soft-wall and gadget destruction</small></button>
+          <button data-op="doc"><b>MENDER</b><small>3 stims · Heal yourself or an aimed-at teammate by 60 HP</small></button>
+          <button data-op="pulse"><b>SONAR</b><small>Heartbeat sensor · Detect enemies through walls within 9m</small></button>
         </div>
         <h3>PRIMARY WEAPON</h3>
         <div class="choices" id="wChoices">
@@ -165,6 +250,7 @@
           <button data-f="on">ON — TEAM KILLS</button>
         </div>
         <button id="deployBtn">DEPLOY</button>
+        <button id="mpBtn" class="mpBtn">MULTIPLAYER · PLAY ONLINE WITH FRIENDS</button>
         <button id="modsBtn" class="modsBtn">HACKER ARENA LOADOUT</button>
         <div class="small">Secure Area: eliminate defenders or hold the objective for 10s.<br>Hacker Arena: last operator alive wins; at time limit, most HP then kills wins. First to 3 round wins.<br>Both modes: drone prep, destructible cameras, and operator abilities.</div>
       </div>
@@ -177,6 +263,9 @@
         <div class="optRow">Lean mode
           <div class="choices row mini" id="leanChoices"><button data-l="hold">HOLD</button><button data-l="toggle">TOGGLE</button></div>
         </div>
+        <div class="optRow">Teammate highlight
+          <div class="choices row mini" id="hlChoices"><button data-h="on">ON</button><button data-h="off">OFF</button></div>
+        </div>
         <div class="optRow">Graphics
           <div class="choices row mini" id="gfxChoices"><button data-g="high">HIGH</button><button data-g="low">LOW</button></div>
         </div>
@@ -184,6 +273,7 @@
           <div class="choices row mini" id="ctrlChoices"><button data-c="auto">AUTO</button><button data-c="touch">TOUCH</button><button data-c="keyboard">PC</button></div>
         </div>
         <label class="touchOnly">Touch look sensitivity <span id="touchSensVal"></span><input type="range" id="touchSens" min="0.3" max="3" step="0.05"></label>
+        <label>Controller look sensitivity <span id="padSensVal"></span><input type="range" id="padSens" min="0.3" max="3" step="0.05"></label>
         <h3>CONTROLS</h3>
         <div class="keys touchOnly">
           <div><span>LEFT</span> Drag to move</div><div><span>EDGE</span> Push stick far = sprint</div>
@@ -229,21 +319,24 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
-<script src="js/util.js"></script>
-<script src="js/textures.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/world.js"></script>
-<script src="js/fx.js"></script>
-<script src="js/models.js"></script>
-<script src="js/map.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/weapons.js"></script>
-<script src="js/player.js"></script>
-<script src="js/bot.js"></script>
-<script src="js/mods.js"></script>
-<script src="js/recon.js"></script>
-<script src="js/operators.js"></script>
-<script src="js/touch.js"></script>
-<script src="js/game.js"></script>
+<script src="js/util.js?v=6"></script>
+<script src="js/textures.js?v=6"></script>
+<script src="js/audio.js?v=6"></script>
+<script src="js/world.js?v=6"></script>
+<script src="js/fx.js?v=6"></script>
+<script src="js/models.js?v=6"></script>
+<script src="js/map.js?v=6"></script>
+<script src="js/nav.js?v=6"></script>
+<script src="js/weapons.js?v=6"></script>
+<script src="js/player.js?v=6"></script>
+<script src="js/bot.js?v=6"></script>
+<script src="js/mods.js?v=6"></script>
+<script src="js/recon.js?v=6"></script>
+<script src="js/operators.js?v=6"></script>
+<script src="js/touch.js?v=6"></script>
+<script src="js/pad.js?v=6"></script>
+<script src="js/highlight.js?v=6"></script>
+<script src="js/net.js?v=6"></script>
+<script src="js/game.js?v=6"></script>
 </body>
 </html>

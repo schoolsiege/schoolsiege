@@ -1,0 +1,76 @@
+/* ---------- main-menu entry ---------- */
+.mpBtn { width: 100%; margin-top: 8px; font-family: 'Oswald', sans-serif; letter-spacing: 3px; font-size: 17px; padding: 11px; cursor: pointer; color: #eef2f5; background: rgba(63, 167, 255, 0.14); border: 1px solid var(--atk); }
+.mpBtn:hover { background: rgba(63, 167, 255, 0.26); }
+
+/* ---------- multiplayer overlays ---------- */
+#mp, #lobby { position: fixed; inset: 0; z-index: 25; display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 20px 0; background: rgba(4, 6, 9, 0.82); -webkit-overflow-scrolling: touch; }
+.mpbox { margin: auto; width: min(980px, 95vw); background: var(--panel); border-top: 3px solid var(--atk); padding: 18px 22px 22px; }
+.mphead { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+.mpbox h3 { font-family: 'Oswald', sans-serif; font-weight: 600; letter-spacing: 4px; font-size: 15px; color: var(--dim); margin: 12px 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mpbox button { font-family: inherit; color: var(--ui); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); padding: 8px 14px; cursor: pointer; font-weight: 700; font-size: 14px; letter-spacing: 1.5px; }
+.mpbox button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.mpbox button:disabled { opacity: 0.4; cursor: default; }
+.mpbox button.ghost { background: transparent; }
+.mpbox button.mini { padding: 3px 10px; font-size: 12px; }
+.mpbox .choices.row button { flex: 1; }
+.mpbox .choices button.sel { border-color: var(--atk); background: rgba(63, 167, 255, 0.22); }
+.mpPrimary { background: var(--atk) !important; color: #051320 !important; border: none !important; font-family: 'Oswald', sans-serif !important; letter-spacing: 4px !important; font-size: 18px !important; }
+.mpPrimary:disabled { background: rgba(63, 167, 255, 0.35) !important; }
+#mpHost { width: 100%; margin-top: 12px; padding: 11px; }
+.mpcols { display: flex; gap: 22px; flex-wrap: wrap; }
+.mpcol { flex: 1 1 320px; }
+.mpname { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 1px; }
+.mpbox input[type=text], .mpbox input:not([type]) { font-family: inherit; font-size: 17px; font-weight: 700; letter-spacing: 2px; color: var(--ui); background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.2); padding: 8px 10px; text-transform: uppercase; }
+.mpbox input:focus { outline: 2px solid var(--atk); }
+#mpName { flex: 1; max-width: 280px; }
+.mpjoin { display: flex; gap: 8px; }
+#mpCode { width: 140px; font-size: 22px !important; letter-spacing: 6px !important; text-align: center; }
+#mpList { display: flex; flex-direction: column; gap: 6px; min-height: 60px; color: var(--dim); font-size: 14px; }
+.mprow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; background: rgba(255, 255, 255, 0.05); color: var(--ui); }
+.mprow b { display: block; letter-spacing: 1.5px; }
+.mprow small { color: var(--dim); }
+#mpStatus { min-height: 20px; font-weight: 700; color: var(--atk); }
+#mpStatus.err { color: #ff6a5a; }
+
+/* lobby room */
+.lbcode { font-family: 'Oswald', sans-serif; font-size: 46px; font-weight: 700; letter-spacing: 12px; color: #ffd54a; line-height: 1; }
+.lbbtns { display: flex; gap: 8px; }
+#lbInfo { margin: 4px 0 8px; font-weight: 700; letter-spacing: 1px; color: var(--ui); }
+#lbHostCtl { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 0 22px; padding: 4px 0 6px; border-top: 1px solid rgba(255, 255, 255, 0.08); border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+#lbHostCtl .optRow { margin: 6px 0; }
+#lbHostCtl .choices { width: auto; min-width: 190px; }
+.lbteams { display: flex; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.lbteam { flex: 1 1 260px; background: rgba(255, 255, 255, 0.04); padding: 4px 12px 10px; border-top: 3px solid var(--atk); }
+.lbteam.def { border-top-color: var(--def); }
+.lbteam.atk h3 { color: var(--atk); }
+.lbteam.def h3 { color: var(--def); }
+.lbp { padding: 6px 8px; margin-bottom: 4px; background: rgba(0, 0, 0, 0.25); }
+.lbp b { display: block; letter-spacing: 1.5px; font-size: 16px; }
+.lbp small { color: var(--dim); font-size: 12px; }
+.lbp.me { outline: 1px solid #ffd54a; }
+.lbp.empty { color: var(--dim); font-style: italic; font-size: 14px; }
+.lbrow { display: flex; gap: 10px; margin-top: 12px; }
+.lbrow button { flex: 1; padding: 11px; }
+#lbWait { margin-top: 8px; min-height: 18px; font-weight: 700; }
+#lbChat { margin-top: 12px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); }
+#lbMsgs { height: 130px; overflow-y: auto; padding: 8px 10px; font-size: 14px; line-height: 1.45; }
+#lbMsgs b { color: var(--atk); }
+#lbMsgs .sys { color: var(--dim); font-style: italic; }
+#lbChatIn { width: 100%; border: none !important; border-top: 1px solid rgba(255, 255, 255, 0.1) !important; text-transform: none !important; letter-spacing: 0.5px !important; font-weight: 600 !important; font-size: 15px !important; }
+
+/* ---------- teammate name tags ---------- */
+#teamTags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.ttag { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; white-space: nowrap; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: #cfe8ff; text-shadow: 0 1px 2px #000, 0 0 4px rgba(0, 0, 0, 0.8); will-change: transform; }
+.ttag i { width: 10px; height: 10px; border: 2px solid #3fa7ff; background: rgba(63, 167, 255, 0.45); transform: rotate(45deg); }
+.ttag.occ { opacity: 0.8; font-size: 11px; }
+.ttag.occ i { width: 8px; height: 8px; }
+.ttag.low i { border-color: #ff5a4a; background: rgba(255, 90, 74, 0.5); }
+
+/* touch: no cameras/drone in online matches */
+body.mp #touch [data-act="cams"], body.mp #touch [data-act="drone"] { display: none; }
+body.touch #mp, body.touch #lobby { padding: 8px 0 20px; }
+body.touch .lbcode { font-size: 34px; }
+body.touch #lbMsgs { height: 90px; }
+
+/* allow finger-scrolling of the multiplayer screens on phones */
+#mp, #lobby, .mpbox, #lbMsgs, #mpList { touch-action: pan-y; }

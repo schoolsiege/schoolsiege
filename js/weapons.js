@@ -140,11 +140,13 @@
   // ---------------------------------------------------------------- GRENADES
   G.Grenades = {
     list: [],
-    throw(owner, pos, vel) {
+    // remote = thrown by another player in multiplayer: we only show it; its owner applies damage/destruction
+    throw(owner, pos, vel, remote) {
       const mesh = G.buildGrenade();
       mesh.position.copy(pos);
       G.scene.add(mesh);
-      this.list.push({ owner, pos: pos.clone(), vel: vel.clone(), fuse: 2.2, mesh, spin: new V(G.randn() * 10, G.randn() * 10, G.randn() * 10), bounces: 0 });
+      this.list.push({ owner, pos: pos.clone(), vel: vel.clone(), fuse: 2.2, mesh, spin: new V(G.randn() * 10, G.randn() * 10, G.randn() * 10), bounces: 0, remote: !!remote });
+      if (!remote && G.Net && G.Net.inGame) G.Net.sendNade(owner, pos, vel);
     },
     clear() { for (const g of this.list) G.scene.remove(g.mesh); this.list = []; },
     update(dt) {
@@ -200,6 +202,11 @@
       const p = g.pos;
       G.FX.explosion(p);
       G.Audio.explosion(p);
+      if (g.remote) {
+        const pl = G.Game.player;
+        if (pl) { const d = pl.eye.distanceTo(p); if (d < 14) G.Game.shake(0.6 * (1 - d / 14)); }
+        return;
+      }
       G.W.destroySphere(p.x, p.y, p.z, 1.7, null, 0, 0.3, 0);
       G.Game.soundEvent(p, 70, g.owner.team, 'explosion');
       for (const e of G.Game.entities) {

@@ -32,7 +32,7 @@
   });
   addEventListener('wheel', (e) => { I.wheel = Math.sign(e.deltaY); }, { passive: true });
 
-  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0 };
+  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0, padSens: 1.0, teamHL: true, mpName: '', mpMode: 'team', mpBots: true, mpPub: true };
   const PLAY_STATES = ['live', 'prep', 'roundEnd'];
 
   // ------------------------------------------------------------- GAME
@@ -44,7 +44,7 @@
     get hackerMode() { return (this.activeMode || this.settings?.mode) === 'hacker'; },
     isEnemy(a, b) { return a !== b && (this.hackerMode || a.team !== b.team); },
     // touch devices never use pointer lock
-    get lockless() { return this.noLock || G.Touch.enabled; },
+    get lockless() { return this.noLock || G.Touch.enabled || (G.Pad && G.Pad.active); },
     pixelRatio() {
       const hi = this.settings.gfx === 'high';
       if (G.Touch.enabled) return Math.min(devicePixelRatio, hi ? 1.5 : 1);
@@ -56,7 +56,7 @@
       try { saved = JSON.parse(localStorage.getItem('breachpoint.settings') || '{}'); } catch (e) { saved = {}; }
       this.settings = Object.assign({}, DEF_SETTINGS, saved);
       if (!G.MAPS.some((m) => m.id === this.settings.map)) this.settings.map = 'harbor';
-      if (!['secure', 'hacker'].includes(this.settings.mode)) this.settings.mode = 'secure';
+      if (!['secure', 'hacker', 'duel'].includes(this.settings.mode)) this.settings.mode = 'secure';
       if (!G.Operators.roster[this.settings.operator]) this.settings.operator = 'sledge';
       const touch = G.Touch.detect(this.settings.controls);
       if (touch && !('gfx' in saved)) this.settings.gfx = 'low';
@@ -115,6 +115,7 @@
       this.last = performance.now();
       requestAnimationFrame((t) => this.loop(t));
       $('loading').style.display = 'none';
+      if (G.Net) G.Net.onGameReady();
     },
 
     resize() {
@@ -187,6 +188,7 @@
       slider('fov', 'fov', (v) => v + '°');
       slider('vol', 'vol', (v) => Math.round(v * 100) + '%');
       slider('touchSens', 'touchSens', (v) => v.toFixed(2));
+      slider('padSens', 'padSens', (v) => v.toFixed(2));
       $('deployBtn').addEventListener('click', () => {
         G.Audio.init(); G.Audio.setVolume(S.vol);
         if (G.Touch.enabled) this.goFullscreen();
@@ -194,9 +196,19 @@
       });
       $('resumeBtn').addEventListener('click', () => this.resume());
       $('prepStart').addEventListener('click', () => { I.pressed.Enter = true; });
-      $('quitBtn').addEventListener('click', () => this.quitToMenu());
-      $('againBtn').addEventListener('click', () => { $('matchEnd').style.display = 'none'; this.startMatch(); });
-      $('menuBtn').addEventListener('click', () => { $('matchEnd').style.display = 'none'; this.quitToMenu(); });
+      $('quitBtn').addEventListener('click', () => { if (this.mp) G.Net.leave(); else this.quitToMenu(); });
+      $('againBtn').addEventListener('click', () => {
+        $('matchEnd').style.display = 'none';
+        if (this.mp) G.Net.returnToLobby(); else this.startMatch();
+      });
+      $('menuBtn').addEventListener('click', () => { $('matchEnd').style.display = 'none'; if (this.mp) G.Net.leave(); else this.quitToMenu(); });
+      // teammate highlight
+      const hlSel = () => { for (const b of $('hlChoices').children) b.classList.toggle('sel', b.dataset.h === (S.teamHL !== false ? 'on' : 'off')); };
+      hlSel();
+      $('hlChoices').addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.teamHL = b.dataset.h === 'on'; hlSel(); this.saveSettings(); G.Audio.click();
+      });
       $('modsBtn').addEventListener('click', () => { G.Audio.init(); this.openMods(); });
       $('pauseModsBtn').addEventListener('click', () => this.openMods());
       $('modsClose').addEventListener('click', () => this.closeMods());
@@ -264,7 +276,9 @@
       G.Recon.clear(); G.Operators.clear();
       $('menu').style.display = 'flex'; $('hud').style.display = 'none'; $('pause').style.display = 'none';
       document.body.classList.remove('playing');
+      document.body.classList.remove('mp');
       G.Touch.show(false);
+      G.Highlight.clear();
       for (const b of this.bots) b.model.root.visible = false;
       this.player.model.root.visible = false;
     },
@@ -281,12 +295,17 @@
       this.activeMode = S.mode;
       I.keys = {}; I.pressed = {}; I.lmb = I.rmb = false;
       G.Touch.releaseAll();
-      if (!this.bots.length) {
-        this.bots = [
+      if (!this.botPool) {
+        this.botPool = [
           new G.Bot('atk', 'RAVEN', 'ar'), new G.Bot('atk', 'DUNE', 'smg'),
           new G.Bot('def', 'BASTION', 'ar'), new G.Bot('def', 'KESTREL', 'smg'), new G.Bot('def', 'HOLLOW', 'sg'), new G.Bot('def', 'MARROW', 'smg'),
         ];
+        this.botPool.forEach((b, i) => { b.nid = 'b' + i; });
       }
+      // 1v1 duel: you against a single defender
+      this.bots = S.mode === 'duel' ? [this.botPool[2]] : this.botPool;
+      for (const b of this.botPool) b.model.root.visible = this.bots.includes(b);
+      this.winTarget = S.mode === 'duel' ? 5 : 3;
       this.entities = [this.player, ...this.bots];
       for (const e of this.entities) { e.kills = 0; e.deaths = 0; e.wins = 0; }
       this.score = { atk: 0, def: 0 };
@@ -303,11 +322,8 @@
     startRound() {
       const S = this.settings, MAP = G.MAP;
       this.round++;
-      G.Grenades.clear(); G.FX.clear(); G.W.resetPanels(); G.Nav.rebuildAll();
-      this.events = [];
-      this.hc = {};
-      this.secure = 0; this.timer = 180; this.spec = null; this.deathT = 0;
-      $('killfeed').innerHTML = ''; $('callouts').innerHTML = '';
+      this.resetRoundWorld();
+      if (this.activeMode === 'duel') this.timer = 120;
       // attackers
       const sp = G.pick(MAP.spawns);
       this.spawnName = sp.name;
@@ -350,6 +366,62 @@
       G.Audio.beep(660, 0.12);
     },
 
+    resetRoundWorld() {
+      G.Grenades.clear(); G.FX.clear(); G.W.resetPanels(); G.Nav.rebuildAll();
+      if (G.Operators) G.Operators.clear();
+      this.events = [];
+      this.hc = {};
+      this.secure = 0; this.timer = 180; this.spec = null; this.deathT = 0;
+      $('killfeed').replaceChildren(); $('callouts').replaceChildren();
+    },
+
+    // ------------------------------------------------------------- MULTIPLAYER HOOKS (driven by G.Net)
+    beginNetMatch(bots, remotes, mode) {
+      this.mp = true;
+      this.activeMode = mode === 'duel' ? 'duel' : 'secure';
+      I.keys = {}; I.pressed = {}; I.lmb = I.rmb = false;
+      G.Touch.releaseAll();
+      this.bots = bots;
+      this.entities = [this.player, ...remotes, ...bots];
+      for (const e of this.entities) { e.kills = 0; e.deaths = 0; e.wins = 0; }
+      this.score = { atk: 0, def: 0 };
+      this.round = 0;
+      this.winTarget = mode === 'duel' ? 5 : 3;
+      $('menu').style.display = 'none';
+      $('hud').style.display = 'block';
+      document.body.classList.add('playing', 'mp');
+      G.Touch.show(true);
+      this.paused = false;
+      this.lock();
+    },
+    endNetMatch() {
+      this.mp = false;
+      this.activeMode = null;
+      this.bots = this.botPool || [];
+      for (const b of this.bots) b.model.root.visible = false;
+      this.entities = [this.player];
+      document.body.classList.remove('mp');
+      G.Highlight.clear();
+    },
+    netRoundStart(spawnName) {
+      this.round++;
+      this.resetRoundWorld();
+      if (this.activeMode === 'duel') this.timer = 120;
+      this.spawnName = spawnName;
+      this.state = 'prep'; this.prepT = 5;
+      $('roundLabel').textContent = `ROUND ${this.round}`;
+      $('spectate').textContent = '';
+      const side = this.player.team === 'atk' ? 'ATTACK' : 'DEFEND';
+      this.big(`ROUND ${this.round}`, `${side} · ${this.activeMode === 'duel' ? '1V1 DUEL' : 'TEAM'} · ${spawnName.toUpperCase()}`, this.player.team);
+    },
+    netRoundEnd(winner, reason) {
+      this.state = 'roundEnd'; this.endT = 99;
+      const won = winner === this.player.team;
+      this.big(won ? 'ROUND WON' : 'ROUND LOST', reason, won ? 'atk' : 'def');
+      G.Audio.sting(won);
+      this.buildIcons();
+    },
+
     endRound(winner, reason) {
       if (this.state !== 'live') return;
       this.state = 'roundEnd'; this.endT = 5;
@@ -358,12 +430,15 @@
       const won = winner === this.player.team;
       this.big(won ? 'ROUND WON' : 'ROUND LOST', reason, won ? 'atk' : 'def');
       G.Audio.sting(won);
+      if (this.mp) G.Net.hostEnd(winner, reason);
     },
     startLive() {
       this.state = 'live'; G.Recon.exit();
       document.body.classList.remove('prep');
       $('roundLabel').textContent = `${this.hackerMode ? 'HACKER' : 'ROUND'} ${this.round}`;
-      this.big(this.hackerMode ? 'HACKER ARENA' : 'ACTION PHASE', this.hackerMode ? 'Every operator for themselves · First to 3 wins · No god mode' : `SECURE THE ${G.MAP.objName} · F: ABILITY · 5: CAMS · 6: DRONE`, 'atk');
+      const goal = `${this.player.team === 'def' ? 'DEFEND' : 'SECURE'} THE ${G.MAP.objName}`;
+      const keys = this.mp ? (G.Touch.enabled ? 'TAP ABILITY' : 'F: ABILITY') : (G.Touch.enabled ? 'TAP ABILITY / CAMS / DRONE' : 'F: ABILITY · 5: CAMS · 6: DRONE');
+      this.big(this.hackerMode ? 'HACKER ARENA' : 'ACTION PHASE', this.hackerMode ? 'Every operator for themselves · First to 3 wins · No god mode' : `${goal} · ${keys}`, 'atk');
       G.Audio.beep(990, 0.25);
     },
     finishHackerRound(winner) {
@@ -391,7 +466,8 @@
         }
       }
     },
-    onKill(killer, victim, head) {
+    onKill(killer, victim, head, fromNet) {
+      if (this.mp && !fromNet) G.Net.onLocalKill(killer, victim, head);
       const tk = !!(killer && killer !== victim && !this.isEnemy(killer, victim));
       if (killer && killer !== victim) killer.kills += tk ? -1 : 1;
       const kname = killer ? killer.name : '';
@@ -410,6 +486,7 @@
         this.big('ELIMINATED', killer && killer !== victim ? `BY ${kname}${tk ? ' (TEAMKILL)' : ''}` : '', 'def');
       } else if (killer && killer.isPlayer) {
         G.Audio.hit(head, true);
+        if (fromNet) this.hitMarker(head, true);
       }
       this.buildIcons();
     },
@@ -439,7 +516,8 @@
     callout(name, msg) {
       const el = document.createElement('div');
       el.className = 'co';
-      el.innerHTML = `<b>${name}:</b> ${msg}`;
+      const nb = document.createElement('b'); nb.textContent = name + ': ';
+      el.append(nb, document.createTextNode(msg));
       const box = $('callouts');
       box.appendChild(el);
       while (box.children.length > 4) box.firstChild.remove();
@@ -472,7 +550,11 @@
       requestAnimationFrame((tt) => this.loop(tt));
       const dt = Math.min(0.05, (t - this.last) / 1000);
       this.last = t;
-      if (!this.paused && this.state !== 'menu' && this.state !== 'boot' && this.state !== 'matchEnd') this.update(dt * G.Mods.c.timeScale);
+      if (G.Pad) G.Pad.poll(dt);
+      // multiplayer keeps simulating while the pause menu is open (you just can't act)
+      if (this.mp && this.paused) { I.keys = {}; I.pressed = {}; I.lmb = I.rmb = false; I.mdx = I.mdy = 0; }
+      const running = (!this.paused || this.mp) && this.state !== 'menu' && this.state !== 'boot' && this.state !== 'matchEnd';
+      if (running) this.update(this.mp ? dt : dt * G.Mods.c.timeScale);
       else if (this.state === 'menu') { G.time += dt; this.menuCam(dt); }
       this.render(dt);
       I.pressed = {}; I.mdx = 0; I.mdy = 0; I.wheel = 0;
@@ -481,26 +563,30 @@
     update(dt) {
       G.time += dt;
       const p = this.player;
+      const host = !this.mp || G.Net.isHost;
+      const target = this.winTarget || 3;
       if (this.state === 'prep') {
         this.prepT -= dt;
-        if (this.prepT <= 0 || I.pressed.Enter) this.startLive();
+        if (host && (this.prepT <= 0 || (!this.mp && I.pressed.Enter))) { this.startLive(); if (this.mp) G.Net.hostLive(); }
+        else if (!host && this.prepT < -3) this.startLive(); // host message lost: don't get stuck
       } else if (this.state === 'live') {
-        if (!G.Mods.c.noTimer) this.timer -= dt;
+        if (!G.Mods.c.noTimer || this.mp) this.timer -= dt;
       } else if (this.state === 'roundEnd') {
         this.endT -= dt;
-        if (this.endT <= 0) {
-          if (this.score.atk >= 3 || this.score.def >= 3) return this.matchOver();
-          this.startRound();
+        if (host && this.endT <= 0) {
+          if (this.score.atk >= target || this.score.def >= target) { if (this.mp) G.Net.hostOver(); return this.matchOver(); }
+          if (this.mp) G.Net.hostStartRound(); else this.startRound();
           return;
         }
       }
       // prune events
       while (this.events.length && G.time - this.events[0].t > 1.5) this.events.shift();
 
-      G.Recon.update(dt);
+      if (!this.mp) G.Recon.update(dt);
       p.update(dt);
       G.Operators.update(dt);
       for (const b of this.bots) b.update(dt);
+      if (this.mp) G.Net.update(dt);
       G.Grenades.update(dt);
       G.Nav.flush();
       G.FX.update(dt);
@@ -528,7 +614,7 @@
         if (!e.alive) continue;
         if (e.pos.x > z.x0 && e.pos.x < z.x1 && e.pos.z > z.z0 && e.pos.z < z.z1) { if (e.team === 'atk') this.zoneAtk++; else this.zoneDef++; }
       }
-      if (this.state === 'live') {
+      if (this.state === 'live' && host) {
         if (this.zoneAtk > 0 && this.zoneDef === 0) this.secure += dt;
         else if (this.zoneAtk === 0) this.secure = Math.max(0, this.secure - dt * 0.5);
         const atkAlive = this.entities.some((e) => e.team === 'atk' && e.alive);
@@ -552,11 +638,18 @@
       $('matchResult').textContent = champion ? `${champion.name} WINS` : won ? 'VICTORY' : 'DEFEAT';
       $('matchResult').style.color = won ? 'var(--atk)' : 'var(--def)';
       $('matchScore').textContent = `${this.score.atk} - ${this.score.def}`;
+      if (this.mp) {
+        const w = this.score.atk > this.score.def ? 'atk' : 'def';
+        $('matchResult').textContent = w === this.player.team ? 'VICTORY' : 'DEFEAT';
+        $('matchResult').style.color = w === this.player.team ? 'var(--atk)' : 'var(--def)';
+      }
+      $('againBtn').textContent = this.mp ? 'BACK TO LOBBY' : 'PLAY AGAIN';
+      $('menuBtn').textContent = this.mp ? 'LEAVE LOBBY' : 'MAIN MENU';
       $('matchEnd').style.display = 'flex';
     },
 
     nextSpec() {
-      const mates = this.bots.filter((b) => (this.hackerMode || b.team === this.player.team) && b.alive);
+      const mates = this.entities.filter((b) => b !== this.player && (this.hackerMode || b.team === this.player.team) && b.alive);
       if (!mates.length) { this.spec = null; return; }
       const i = mates.indexOf(this.spec);
       this.spec = mates[(i + 1) % mates.length];
@@ -575,6 +668,7 @@
       let showVM = false;
       if (this.state !== 'menu' && this.state !== 'boot') {
         for (const b of this.bots) b.model.root.visible = true;
+        if (this.mp) for (const e of this.entities) if (e.isRemotePlayer) e.model.root.visible = true;
         p.model.root.visible = !p.alive || !!G.Recon.active;
         if (p.alive && G.Recon.applyView(cam)) { /* remote view; body stays in the world */ }
         else if (p.alive) { p.updateView(cam, dt); showVM = true; }
@@ -601,6 +695,7 @@
       G.Mods.renderChams(r, G.scene, cam);
       if (showVM) { r.clearDepth(); r.render(G.VM.scene, G.VM.camera); }
       G.Mods.drawESP(cam);
+      if (this.state !== 'menu' && this.state !== 'boot') G.Highlight.update(cam);
       if (['prep', 'live', 'roundEnd'].includes(this.state)) G.Operators.draw(cam);
       G.Touch.updateButtons(p);
     },

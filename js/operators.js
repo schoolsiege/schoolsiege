@@ -3,10 +3,10 @@
   const G = window.G, V = THREE.Vector3;
   const O = (G.Operators = {
     roster: {
-      sledge: { name: 'SLEDGE', ability: 'BREACHING HAMMER', charges: 12, cooldown: 1.1 },
-      ash: { name: 'ASH', ability: 'BREACHING ROUND', charges: 2, cooldown: 2.5 },
-      doc: { name: 'DOC', ability: 'STIM PISTOL', charges: 3, cooldown: 4 },
-      pulse: { name: 'PULSE', ability: 'HEARTBEAT SENSOR', charges: Infinity, cooldown: 12 },
+      sledge: { name: 'MAUL', ability: 'BREACHING HAMMER', charges: 12, cooldown: 1.1 },
+      ash: { name: 'CINDER', ability: 'BREACHING ROUND', charges: 2, cooldown: 2.5 },
+      doc: { name: 'MENDER', ability: 'STIM PISTOL', charges: 3, cooldown: 4 },
+      pulse: { name: 'SONAR', ability: 'HEARTBEAT SENSOR', charges: Infinity, cooldown: 12 },
     },
     marks: new Map(), rounds: [],
     clear() {
@@ -58,7 +58,8 @@
           }
         }
         if (patient.hp >= 100) { if (e.isPlayer) G.Game.big('HEALTH FULL', 'Aim at an injured teammate to heal them'); return false; }
-        patient.hp = Math.min(100, patient.hp + 60); G.Audio.beep(900, 0.15);
+        if (patient.remote) G.Net.sendHeal(patient, 60); else patient.hp = Math.min(100, patient.hp + 60);
+        G.Audio.beep(900, 0.15);
         if (e.isPlayer) G.Game.big('+60 STIM', patient === e ? 'SELF HEAL' : patient.name, 'atk');
       } else if (e.operator === 'pulse') {
         e.sensorT = 4; G.Audio.beep(440, 0.12);
@@ -85,6 +86,7 @@
           }
         }
         if (e.isPlayer) { if (G.Input.pressed.KeyF) this.use(e); }
+        else if (e.remote) continue; // other players' abilities are simulated on their own machine
         else {
           e.gadgetThink -= dt;
           if (e.gadgetThink > 0) continue;

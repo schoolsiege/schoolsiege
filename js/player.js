@@ -150,6 +150,7 @@
       this.hp -= amt;
       this.hurtT = 1;
       G.Audio.hurt();
+      if (G.Pad) G.Pad.rumble(0.18, 0.4, 0.8);
       G.Game.onPlayerHurt(amt, attacker, dx, dz);
       this.punch += 0.02; this.punchYaw += G.randn() * 0.01;
       if (this.hp <= 0) {
@@ -216,6 +217,8 @@
         if (I.pressed.KeyE) this.leanToggle = this.leanToggle === 1 ? 0 : 1;
         lt = this.leanToggle;
       } else lt = (I.keys.KeyE ? 1 : 0) - (I.keys.KeyQ ? 1 : 0);
+      // controller: hold LT, click left/right stick to lean
+      if (G.Pad && G.Pad.lean) lt = G.Pad.lean;
       if (this.sprint > 0.5 || this.vault) lt = 0;
       if (lt !== 0) {
         G.rightFrom(this.yaw, _r);
@@ -482,7 +485,8 @@
         if (M.noSpread) r = def.pellets > 1 ? r * 0.25 : 0;
         const a = Math.random() * Math.PI * 2;
         _d.copy(_f).addScaledVector(_r, Math.cos(a) * r).addScaledVector(_u, Math.sin(a) * r).normalize();
-        G.fireBullet(this, this.eye.x, this.eye.y, this.eye.z, _d.x, _d.y, _d.z, def, p);
+        const end = G.fireBullet(this, this.eye.x, this.eye.y, this.eye.z, _d.x, _d.y, _d.z, def, p);
+        if (p === 0 && G.Net && G.Net.inGame) G.Net.sendShot(this, end, def.key);
       }
       // recoil
       const k = (1 - 0.3 * this.ads) * (M.noRecoil ? 0 : 1);
@@ -501,6 +505,7 @@
       G.Game.soundEvent(this.eye, def.sound === 'shotgun' ? 55 : 45, this.team, 'shot');
       if (def.shell) { this.pumpT = 0.55; setTimeout(() => { if (this.alive) { G.Audio.reload('pump', null, true); VM.ejectShell(); } }, 140); }
       G.Game.shake(def.pellets > 1 ? 0.12 : 0.02);
+      if (G.Pad) G.Pad.rumble(def.pellets > 1 ? 0.14 : 0.05, 0.25, def.pellets > 1 ? 0.9 : 0.35);
     }
 
     doMelee() {
