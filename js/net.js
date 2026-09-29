@@ -1,8 +1,8 @@
 'use strict';
-// Online multiplayer with lobbies — no game server required.
-// Browsers connect peer-to-peer over WebRTC using PeerJS. The free public PeerJS broker is only used
-// to introduce players; game data then flows directly between browsers (or through PeerJS's public
-// TURN relays when a network blocks direct connections), so it works across different Wi-Fi networks.
+// Online multiplayer with lobbies — no game server of our own required.
+// All traffic goes through a free public MQTT message broker over a secure WebSocket (the same kind of
+// connection as a normal website), so it works on mobile data, home Wi-Fi and most school/work networks.
+// Lobbies are listed as retained broker messages, which makes the lobby browser instant and live.
 // Topology: the lobby host is the hub. Everyone simulates their own operator; the host runs bots,
 // round timing and win conditions. Damage is applied by whoever owns the victim.
 (function () {
@@ -10,23 +10,14 @@
   const V = THREE.Vector3;
   const $ = (id) => document.getElementById(id);
 
-  const VERSION = 'bp-mp-1';
-  const PREFIX = 'breachpoint-mp1-';
-  const SLOTS = 10;
+  const VERSION = 'bp-mp-2';
+  const TOPIC = 'breachpoint-fps/v2/';
+  // tried in order; everyone normally lands on the first one
+  const BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081'];
+  const MQTT_JS = 'https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js';
+  const LISTING_TTL = 90000;
   const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const PEER_JS = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
-  const PEER_OPTS = {
-    debug: 0,
-    config: {
-      iceServers: [
-        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-        { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
-        // extra free relays on ports 80/443 (TCP too) for mobile data and strict school/work networks
-        { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
-      ],
-    },
-  };
-  const TICK = 1 / 20;
+  const TICK = 1 / 15;
   const BOT_NAMES = { atk: ['RAVEN', 'DUNE', 'GALE', 'FLINT', 'ORCA'], def: ['BASTION', 'KESTREL', 'HOLLOW', 'MARROW', 'SPUR'] };
   const WEAPON_KEYS = ['ar', 'smg', 'sg'];
   const r2 = (v) => Math.round(v * 100) / 100;
@@ -37,28 +28,85 @@
   const validOp = (o) => (G.Operators && G.Operators.roster[o] ? o : 'sledge');
   const maxPlayers = (L) => (L.mode === 'duel' ? 2 : 10);
   const randCode = () => Array.from({ length: 5 }, () => CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]).join('');
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  let peerLib = null;
-  function loadPeer() {
-    if (peerLib) return peerLib;
-    peerLib = new Promise((res, rej) => {
-      const got = () => window.Peer || (window.peerjs && window.peerjs.Peer);
-      if (got()) return res(got());
+  let mqttLib = null;
+  function loadMqtt() {
+    if (mqttLib) return mqttLib;
+    mqttLib = new Promise((res, rej) => {
+      if (window.mqtt) return res(window.mqtt);
       const s = document.createElement('script');
-      s.src = PEER_JS; s.async = true;
-      s.onload = () => (got() ? res(got()) : rej(new Error('Networking library failed to start.')));
-      s.onerror = () => { peerLib = null; rej(new Error('Could not load the networking library. Check your internet connection.')); };
+      s.src = MQTT_JS; s.async = true;
+      s.onload = () => (window.mqtt ? res(window.mqtt) : rej(new Error('Networking library failed to start.')));
+      s.onerror = () => { mqttLib = null; rej(new Error('Could not load the networking library. Check your internet connection.')); };
       document.head.appendChild(s);
     });
-    return peerLib;
+    return mqttLib;
   }
-  function errText(e) {
-    const t = e && e.type;
-    if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return 'Could not reach the lobby server. Check your internet connection and try again.';
-    if (t === 'browser-incompatible') return 'This browser does not support online play (WebRTC).';
-    if (t === 'peer-unavailable') return 'No lobby with that code.';
-    return (e && e.message) || 'Connection error.';
-  }
+
+  // ================================================================ MESSAGE BUS
+  // One connection per public broker, opened on demand. A lobby lives on one broker (recorded in its
+  // code); the lobby browser listens on all of them so a flaky broker never hides a lobby.
+  const Bus = {
+    id: 'bp' + Math.random().toString(36).slice(2, 12),
+    clients: [], pending: [], handlers: BROKERS.map(() => ({ subs: new Map(), pre: new Map() })),
+    up(b) { const c = this.clients[b]; return !!(c && c.connected); },
+    ensure(b) {
+      if (this.up(b)) return Promise.resolve(b);
+      if (this.pending[b]) return this.pending[b];
+      this.pending[b] = (async () => {
+        const lib = await loadMqtt();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const c = await new Promise((res) => {
+            const cl = lib.connect(BROKERS[b], {
+              clientId: this.id + '-' + b + '-' + attempt, clean: true, connectTimeout: 7000, reconnectPeriod: 2500, keepalive: 20,
+              will: { topic: TOPIC + 'gone/' + this.id, payload: '1', qos: 0, retain: false },
+            });
+            const to = setTimeout(() => { cl.end(true); res(null); }, 4500);
+            cl.once('connect', () => { clearTimeout(to); res(cl); });
+          });
+          if (c) {
+            if (this.clients[b]) this.clients[b].end(true);
+            this.clients[b] = c;
+            c.on('message', (topic, buf) => this.dispatch(b, topic, buf));
+            const h = this.handlers[b];
+            for (const t of h.subs.keys()) c.subscribe(t);
+            for (const pre of h.pre.keys()) c.subscribe(pre + '+');
+            return b;
+          }
+        }
+        throw new Error('Could not reach the online service. Check your internet connection and try again.');
+      })().finally(() => { this.pending[b] = null; });
+      return this.pending[b];
+    },
+    // first broker that answers, in preference order
+    async any() {
+      const tries = BROKERS.map((u, b) => this.ensure(b));
+      tries.forEach((t) => t.catch(() => {}));
+      try { return await Promise.race([tries[0], sleep(3000).then(() => { throw new Error('slow'); })]); } catch (e) { /* fall through */ }
+      try { return await Promise.any(tries); }
+      catch (e) { throw new Error('Could not reach the online service. Check your internet connection and try again.'); }
+    },
+    dispatch(b, topic, buf) {
+      const raw = buf.toString();
+      let d = null;
+      if (raw) { try { d = JSON.parse(raw); } catch (e) { return; } }
+      const h = this.handlers[b];
+      const fn = h.subs.get(topic);
+      if (fn) { try { fn(d, topic, b); } catch (e) { console.warn('[net]', e); } return; }
+      for (const [pre, f] of h.pre) if (topic.startsWith(pre)) { try { f(d, topic, b); } catch (e) { console.warn('[net]', e); } return; }
+    },
+    sub(b, topic, fn) { this.handlers[b].subs.set(topic, fn); if (this.up(b)) this.clients[b].subscribe(topic); },
+    subPrefix(b, pre, fn) { this.handlers[b].pre.set(pre, fn); if (this.up(b)) this.clients[b].subscribe(pre + '+'); },
+    unsub(b, topic) { if (b == null) return; if (this.handlers[b].subs.delete(topic) && this.up(b)) this.clients[b].unsubscribe(topic); },
+    unsubPrefix(b, pre) { if (this.handlers[b].pre.delete(pre) && this.up(b)) this.clients[b].unsubscribe(pre + '+'); },
+    pub(b, topic, obj, retain) { if (b != null && this.up(b)) this.clients[b].publish(topic, obj == null ? '' : JSON.stringify(obj), { qos: 0, retain: !!retain }); },
+  };
+  // the lobby code's first letter records which broker the lobby lives on
+  const codeBroker = (code) => CODE_CHARS.indexOf(code[0]) % BROKERS.length;
+  const codeFor = (b) => { let c; do { c = randCode(); } while (codeBroker(c) !== b); return c; };
+  G.Bus = Bus;
+  const errText = (e) => (e && e.message) || 'Connection error.';
 
   // ================================================================ REMOTE PLAYER
   // Another human in the match, animated from their network updates.
@@ -128,7 +176,7 @@
 
   // ================================================================ NET
   const N = (G.Net = {
-    peer: null, slotPeer: null, isHost: false, hostConn: null, conns: new Map(), myNid: null, lobby: null,
+    room: null, isHost: false, hostConn: null, conns: new Map(), byClient: new Map(), myNid: null, lobby: null, listings: new Map(),
     inGame: false, applying: false, cellQ: [], barQ: [], tickT: 0, nextNid: 1, lastHostMsg: 0, chatLog: [],
 
     // ---------------------------------------------------------------- helpers
@@ -137,17 +185,6 @@
     status(msg, err) { const el = $('mpStatus'); if (el) { el.textContent = msg || ''; el.classList.toggle('err', !!err); } },
     byNid(nid) { if (nid == null) return null; for (const e of G.Game.entities) if (e.nid === nid) return e; return null; },
     owns(e) { return !!e && (e === G.Game.player || (this.isHost && e.isBot && !e.puppet)); },
-    newPeer(id) {
-      return loadPeer().then((P) => new Promise((res, rej) => {
-        let p;
-        try { p = id ? new P(id, PEER_OPTS) : new P(PEER_OPTS); } catch (e) { rej(e); return; }
-        const fail = (e) => { p.off('open', ok); try { p.destroy(); } catch (x) { /* already gone */ } rej(e); };
-        const ok = () => { p.off('error', fail); res(p); };
-        p.once('open', ok);
-        p.once('error', fail);
-      }));
-    },
-
     // ---------------------------------------------------------------- UI
     init() {
       const S = () => this.settings();
@@ -189,7 +226,7 @@
         if (k === 'mode') { L.mode = v; if (v === 'duel') this.balanceDuel(); }
         if (k === 'bots') L.bots = v === 'true';
         if (k === 'ff') L.ff = v === 'true';
-        if (k === 'pub') { L.pub = v === 'true'; if (L.pub) this.claimSlot(); else this.releaseSlot(); }
+        if (k === 'pub') L.pub = v === 'true';
         G.Audio.click();
         this.broadcastLobby();
       });
@@ -220,38 +257,41 @@
       this.status('');
       if (!code) this.browse();
     },
-    closeBrowser() { $('mp').style.display = 'none'; },
+    closeBrowser() { $('mp').style.display = 'none'; BROKERS.forEach((u, b) => Bus.unsubPrefix(b, TOPIC + 'lobbies/')); },
 
-    // ---------------------------------------------------------------- lobby browsing (public slots)
+    // ---------------------------------------------------------------- lobby browsing (retained broker messages)
+    // Live lobby list: every public lobby keeps a retained message on the broker, so subscribing
+    // returns all of them at once and later changes arrive automatically.
     async browse() {
       const list = $('mpList');
-      if (this.browsing) return;
-      this.browsing = true;
       list.textContent = 'Searching for public lobbies…';
-      let probe;
-      try { probe = await this.newPeer(); } catch (e) { list.textContent = errText(e); this.browsing = false; return; }
-      const found = [];
-      await new Promise((res) => {
-        let pending = SLOTS;
-        const flags = new Array(SLOTS + 1).fill(false);
-        const done = (i) => { if (flags[i]) return; flags[i] = true; if (--pending <= 0) res(); };
-        probe.on('error', (e) => {
-          const m = new RegExp(PREFIX + 'slot-(\\d+)').exec((e && e.message) || '');
-          if (m) done(+m[1]);
-        });
-        for (let i = 1; i <= SLOTS; i++) {
-          const c = probe.connect(PREFIX + 'slot-' + i, { serialization: 'json' });
-          c.on('data', (d) => { if (d && d.t === 'info' && d.v === VERSION) found.push(d); done(i); });
-          c.on('error', () => done(i));
-          setTimeout(() => done(i), 7000);
+      this.listings.clear();
+      const onListing = (d, topic, b) => {
+        const code = topic.slice((TOPIC + 'lobbies/').length);
+        if (!d) { if (this.listings.get(code) && this.listings.get(code).b === b) this.listings.delete(code); }
+        else if (d.v === VERSION && typeof d.ts === 'number') {
+          // clean up long-dead listings left behind by crashed hosts
+          if (Date.now() - d.ts > 10 * 60000) Bus.pub(b, topic, null, true);
+          else { d.b = b; this.listings.set(code, d); }
         }
-      });
-      try { probe.destroy(); } catch (e) { /* ignore */ }
-      this.browsing = false;
-      this.renderList(found);
+        clearTimeout(this.listT);
+        this.listT = setTimeout(() => this.renderList(), 150);
+      };
+      let reached = 0;
+      await Promise.all(BROKERS.map((u, b) => Bus.ensure(b).then(() => {
+        reached++;
+        Bus.unsubPrefix(b, TOPIC + 'lobbies/');
+        Bus.subPrefix(b, TOPIC + 'lobbies/', onListing);
+      }, () => {})));
+      if (!reached) { list.textContent = 'Could not reach the online service. Check your internet connection and press REFRESH.'; return; }
+      setTimeout(() => { if (list.textContent.startsWith('Searching')) this.renderList(); }, 2500);
+      clearInterval(this.listRefresh);
+      this.listRefresh = setInterval(() => { if ($('mp').style.display !== 'none') this.renderList(); else clearInterval(this.listRefresh); }, 5000);
     },
-    renderList(found) {
+    renderList() {
       const list = $('mpList');
+      const now = Date.now();
+      const found = [...this.listings.values()].filter((d) => now - d.ts < LISTING_TTL && d.code !== (this.lobby && this.lobby.code));
       list.replaceChildren();
       if (!found.length) { list.textContent = 'No public lobbies right now. Host one, or join a friend with their code.'; return; }
       for (const d of found) {
@@ -271,70 +311,60 @@
     },
 
     // ---------------------------------------------------------------- hosting
+    roomTopic(code, part) { return TOPIC + 'room/' + code + '/' + part; },
     async host() {
       this.leave(true);
       const S = this.settings();
       this.status('Creating lobby…');
-      let peer = null, code = null;
-      for (let i = 0; i < 5 && !peer; i++) {
-        code = randCode();
-        try { peer = await this.newPeer(PREFIX + code); }
-        catch (e) { if (e.type !== 'unavailable-id') { this.status(errText(e), true); return; } }
-      }
-      if (!peer) { this.status('Could not create a lobby. Try again.', true); return; }
-      this.peer = peer; this.isHost = true; this.myNid = 'u0'; this.nextNid = 1; this.chatLog = [];
+      let rb;
+      try { rb = await Bus.any(); } catch (e) { this.status(errText(e), true); return; }
+      const code = codeFor(rb);
+      this.rb = rb; this.room = code; this.isHost = true; this.myNid = 'u0'; this.nextNid = 1; this.chatLog = [];
       this.lobby = {
         code, name: `${this.myName()}'S LOBBY`, mode: S.mpMode === 'duel' ? 'duel' : 'team', map: S.map,
         bots: S.mpBots !== false, ff: !!S.ff, pub: S.mpPub !== false, started: false,
         players: [{ nid: 'u0', name: this.myName(), team: 'atk', w: validW(S.primary), op: validOp(S.operator) }],
       };
-      peer.on('connection', (c) => this.onClientConn(c));
-      peer.on('disconnected', () => this.safeReconnect(peer));
-      peer.on('error', (e) => { if (e.type !== 'peer-unavailable') console.warn('[net]', e.type); });
-      if (this.lobby.pub) this.claimSlot();
+      Bus.sub(rb, this.roomTopic(code, 'h'), (d) => this.onHostInbox(d));
       this.startHeartbeat();
       this.showLobby();
       this.sysChat('Lobby created. Share the code or invite link with friends.');
+      this.publishListing();
     },
-    async claimSlot() {
-      if (this.slotPeer || this.claiming) return;
-      this.claiming = true;
-      for (let i = 1; i <= SLOTS; i++) {
-        if (!this.isHost || !this.lobby || !this.lobby.pub) break;
-        try {
-          const sp = await this.newPeer(PREFIX + 'slot-' + i);
-          if (!this.isHost || !this.lobby || !this.lobby.pub) { sp.destroy(); break; }
-          this.slotPeer = sp;
-          sp.on('connection', (c) => { c.on('open', () => { c.send(this.publicInfo()); setTimeout(() => c.close(), 2000); }); });
-          sp.on('disconnected', () => this.safeReconnect(sp));
-          sp.on('error', () => {});
-          break;
-        } catch (e) { if (e.type !== 'unavailable-id') break; }
-      }
-      this.claiming = false;
+    // public lobbies are retained messages; refreshed while hosting and cleared on leave
+    publishListing() {
+      if (!this.isHost || !this.lobby) return;
+      const topic = TOPIC + 'lobbies/' + this.lobby.code;
+      if (this.lobby.pub) Bus.pub(this.rb, topic, this.publicInfo(), true);
+      else if (this.listed) Bus.pub(this.rb, topic, null, true);
+      this.listed = this.lobby.pub;
     },
-    // PeerJS also fires 'disconnected' while a peer is being destroyed on purpose (leaving the lobby).
-    // Reconnecting then would leave a ghost lobby online, so wait and only reconnect peers we still own.
-    safeReconnect(p) {
-      setTimeout(() => {
-        if (p.destroyed || !p.disconnected || (p !== this.peer && p !== this.slotPeer)) return;
-        try { p.reconnect(); } catch (e) { /* ignore */ }
-      }, 1500);
+    releaseListing() {
+      if (this.listed && this.lobby) Bus.pub(this.rb, TOPIC + 'lobbies/' + this.lobby.code, null, true);
+      this.listed = false;
     },
-    releaseSlot() { if (this.slotPeer) { try { this.slotPeer.destroy(); } catch (e) { /* ignore */ } this.slotPeer = null; } },
     publicInfo() {
       const L = this.lobby;
-      return { t: 'info', v: VERSION, code: L.code, name: L.name, mode: L.mode, map: L.map, n: L.players.length, max: maxPlayers(L), started: L.started };
+      return { v: VERSION, ts: Date.now(), code: L.code, name: L.name, mode: L.mode, map: L.map, n: L.players.length, max: maxPlayers(L), started: L.started };
     },
-    onClientConn(c) {
-      c.lastHeard = performance.now();
-      c.on('data', (d) => { try { this.onClientMsg(c, d); } catch (e) { console.warn('[net] bad message', e); } });
-      c.on('close', () => this.dropClient(c));
-      c.on('error', () => this.dropClient(c));
+    onHostInbox(d) {
+      if (!d || typeof d !== 'object' || typeof d.f !== 'string') return;
+      let c = this.byClient.get(d.f);
+      if (!c) {
+        if (d.t !== 'hello') return;
+        const code = this.room, id = d.f;
+        c = { id, nid: null, open: true, lastHeard: performance.now(),
+          send: (m) => { if (c.open) Bus.pub(this.rb, this.roomTopic(code, 'p/' + id), m); },
+          close: () => { c.open = false; } };
+        this.byClient.set(id, c);
+        Bus.sub(this.rb, TOPIC + 'gone/' + id, () => this.dropClient(c));
+      }
+      this.onClientMsg(c, d);
     },
     admit(c, d) {
       const L = this.lobby;
       const deny = (r) => { c.send({ t: 'deny', r }); setTimeout(() => c.close(), 600); };
+      if (c.nid) { c.send({ t: 'welcome', nid: c.nid, hid: Bus.id, chat: [] }); return; } // repeated hello
       if (!L) return deny('Lobby closed.');
       if (d.v !== VERSION) return deny('Different game version. Both players should refresh the page.');
       if (L.started) return deny('That lobby is already in a match. Try again when it ends.');
@@ -346,7 +376,7 @@
       L.players.push({ nid, name, team: atk <= def ? 'atk' : 'def', w: validW(d.w), op: validOp(d.op) });
       if (L.mode === 'duel') this.balanceDuel();
       c.nid = nid; this.conns.set(nid, c);
-      c.send({ t: 'welcome', nid, chat: this.chatLog.slice(-20) });
+      c.send({ t: 'welcome', nid, hid: Bus.id, chat: this.chatLog.slice(-20) });
       this.sysChat(`${name} joined.`);
       this.broadcastLobby();
     },
@@ -356,6 +386,9 @@
       if (L.players[1]) L.players[1].team = 'def';
     },
     dropClient(c) {
+      this.byClient.delete(c.id);
+      Bus.unsub(this.rb, TOPIC + 'gone/' + c.id);
+      c.open = false;
       const nid = c.nid;
       if (!nid || !this.conns.has(nid)) return;
       this.conns.delete(nid);
@@ -371,13 +404,16 @@
       this.broadcastLobby();
     },
     broadcast(msg, except) {
-      for (const c of this.conns.values()) if (c !== except && c.open) { try { c.send(msg); } catch (e) { /* closed */ } }
+      if (!this.room || !this.isHost) return;
+      if (except && except.nid) msg._x = except.nid;
+      Bus.pub(this.rb, this.roomTopic(this.room, 'a'), msg);
     },
     sendTo(nid, msg) { const c = this.conns.get(nid); if (c && c.open) { try { c.send(msg); } catch (e) { /* closed */ } } },
     broadcastLobby() {
       if (!this.isHost || !this.lobby) return;
       this.broadcast({ t: 'lobby', lobby: this.lobby });
       this.renderLobby();
+      this.publishListing();
     },
     onClientMsg(c, d) {
       if (!d || typeof d !== 'object') return;
@@ -425,35 +461,40 @@
       if (code.length !== 5) { this.status('Enter the 5-character lobby code.', true); return; }
       this.leave(true);
       this.status('Connecting to lobby ' + code + '…');
-      let peer;
-      try { peer = await this.newPeer(); } catch (e) { this.status(errText(e), true); return; }
-      this.peer = peer; this.isHost = false; this.myNid = null; this.chatLog = [];
-      const conn = peer.connect(PREFIX + code, { serialization: 'json', reliable: true });
-      this.hostConn = conn;
-      const giveUp = setTimeout(() => {
-        if (!this.myNid && this.hostConn === conn) { this.leave(true); this.status('The lobby did not answer. It may have closed, or a firewall is blocking the connection.', true); }
-      }, 20000);
-      peer.on('error', (e) => {
-        if (this.myNid || this.hostConn !== conn) return;
-        clearTimeout(giveUp);
-        this.leave(true);
-        this.status(e.type === 'peer-unavailable' ? `No lobby with code ${code}. Check the code and try again.` : errText(e), true);
-      });
-      conn.on('open', () => {
-        const S = this.settings();
-        conn.send({ t: 'hello', v: VERSION, name: this.myName(), w: validW(S.primary), op: validOp(S.operator) });
-      });
-      conn.on('data', (d) => { try { this.onHostMsg(d); } catch (e) { console.warn('[net] bad message', e); } });
-      conn.on('close', () => { if (this.hostConn === conn) this.hostLost(); });
-      conn.on('error', () => { if (this.hostConn === conn && this.myNid) this.hostLost(); });
+      const b = codeBroker(code);
+      if (b < 0) { this.status('That is not a valid lobby code.', true); return; }
+      try { await Bus.ensure(b); } catch (e) { this.status(errText(e), true); return; }
+      if (await this.tryJoin(code, b)) return;
+      if (this.joinDenied) return;
+      this.leave(true);
+      this.status(`No lobby with code ${code} answered. Check the code, and make sure the host still has the game open.`, true);
+    },
+    async tryJoin(code, b) {
+      this.rb = b; this.room = code; this.isHost = false; this.myNid = null; this.chatLog = []; this.joinDenied = false;
+      const hostTopic = this.roomTopic(code, 'h');
+      this.hostConn = { open: true, send: (m) => { m.f = Bus.id; Bus.pub(b, hostTopic, m); }, close() { this.open = false; } };
+      const onMsg = (d) => { if (d && typeof d === 'object' && d._x !== this.myNid) { try { this.onHostMsg(d); } catch (e) { console.warn('[net] bad message', e); } } };
+      Bus.sub(b, this.roomTopic(code, 'a'), onMsg);
+      Bus.sub(b, this.roomTopic(code, 'p/' + Bus.id), onMsg);
+      await sleep(250); // let the subscriptions settle before saying hello
+      const S = this.settings();
+      for (let i = 0; i < 3 && !this.myNid && !this.joinDenied; i++) {
+        this.hostConn.send({ t: 'hello', v: VERSION, name: this.myName(), w: validW(S.primary), op: validOp(S.operator) });
+        for (let k = 0; k < 20 && !this.myNid && !this.joinDenied; k++) await sleep(100);
+      }
+      if (this.myNid) return true;
+      if (!this.joinDenied) { Bus.unsub(b, this.roomTopic(code, 'a')); Bus.unsub(b, this.roomTopic(code, 'p/' + Bus.id)); this.room = null; this.hostConn = null; }
+      return false;
     },
     onHostMsg(d) {
       if (!d || typeof d !== 'object') return;
       this.lastHostMsg = performance.now();
       switch (d.t) {
-        case 'deny': this.leave(true); this.status(String(d.r || 'Could not join.'), true); break;
+        case 'deny': this.joinDenied = true; this.leave(true); this.status(String(d.r || 'Could not join.'), true); break;
         case 'welcome':
+          if (this.myNid) break;
           this.myNid = String(d.nid);
+          if (typeof d.hid === 'string') { this.hostId = d.hid; Bus.sub(this.rb, TOPIC + 'gone/' + d.hid, () => this.hostLost()); }
           if (Array.isArray(d.chat)) for (const m of d.chat) this.addChat(m.from, m.text);
           this.startHeartbeat();
           break;
@@ -474,7 +515,7 @@
       }
     },
     hostLost(msg) {
-      if (!this.peer && !this.inGame) return;
+      if (!this.room && !this.inGame) return;
       const wasIn = this.inGame;
       this.leave(true);
       if (wasIn) G.Game.quitToMenu();
@@ -487,6 +528,7 @@
       this.hb = setInterval(() => {
         const now = performance.now();
         if (this.isHost) {
+          if (this.lobby && this.lobby.pub && (this.hbN = (this.hbN || 0) + 1) % 3 === 0) this.publishListing();
           for (const c of [...this.conns.values()]) {
             if (now - (c.lastHeard || now) > 15000) { try { c.close(); } catch (e) { /* ignore */ } this.dropClient(c); }
             else if (c.open) c.send({ t: 'ping' });
@@ -501,14 +543,13 @@
     // ---------------------------------------------------------------- leaving
     leave(silent) {
       clearInterval(this.hb);
-      if (this.isHost) this.broadcast({ t: 'bye' });
-      else if (this.hostConn && this.hostConn.open) { try { this.hostConn.send({ t: 'bye' }); } catch (e) { /* ignore */ } }
-      for (const c of this.conns.values()) { try { c.close(); } catch (e) { /* ignore */ } }
-      this.conns.clear();
-      const hc = this.hostConn; this.hostConn = null;
-      if (hc) { try { hc.close(); } catch (e) { /* ignore */ } }
-      this.releaseSlot();
-      if (this.peer) { try { this.peer.destroy(); } catch (e) { /* ignore */ } this.peer = null; }
+      if (this.isHost) { this.broadcast({ t: 'bye' }); this.releaseListing(); }
+      else if (this.hostConn && this.hostConn.open && this.myNid) { try { this.hostConn.send({ t: 'bye' }); } catch (e) { /* ignore */ } }
+      for (const c of this.byClient.values()) Bus.unsub(this.rb, TOPIC + 'gone/' + c.id);
+      this.conns.clear(); this.byClient.clear();
+      if (this.hostId) { Bus.unsub(this.rb, TOPIC + 'gone/' + this.hostId); this.hostId = null; }
+      if (this.room) for (const part of ['h', 'a', 'p/' + Bus.id]) Bus.unsub(this.rb, this.roomTopic(this.room, part));
+      this.hostConn = null; this.room = null;
       const wasIn = this.inGame;
       if (wasIn) this.endMatch();
       this.isHost = false; this.myNid = null; this.lobby = null;

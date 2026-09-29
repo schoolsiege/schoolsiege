@@ -73,7 +73,7 @@ Pick **1V1 DUEL** on the main menu to fight a single defender bot. First to 5 ro
 
 ## Online multiplayer
 
-Press **MULTIPLAYER** on the main menu. No server setup is needed: players connect directly browser-to-browser (WebRTC via PeerJS). The free public PeerJS service only introduces players, and its public relay servers are used automatically when a network blocks direct connections, so friends on different Wi-Fi networks, phones and PCs can play together.
+Press **MULTIPLAYER** on the main menu. No server setup is needed: game traffic goes through free public MQTT message brokers (HiveMQ, with test.mosquitto.org as backup) over a secure WebSocket, so it works on mobile data, different Wi-Fi networks, phones and PCs. The lobby code records which broker the lobby is on, and the lobby list updates live.
 
 - **Host:** choose TEAM or 1V1, bots on/off and public/private, then CREATE LOBBY. Share the 5-letter code or press COPY INVITE LINK (the link auto-joins).
 - **Join:** type the code, open an invite link, or pick a lobby from PUBLIC LOBBIES.
