@@ -91,3 +91,6 @@ body.playing #killcam[style*="block"] ~ #center { display: none; }
 body.touch .kcTag { font-size: 16px; }
 body.touch .kcWho { font-size: 15px; }
 body.touch .kcSkip::after { content: ''; }
+
+/* controller in use on a phone/tablet: hide the touch buttons until the screen is touched again */
+body.padui #touch { visibility: hidden; }

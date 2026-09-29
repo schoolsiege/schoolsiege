@@ -71,7 +71,12 @@
       for (let i = 0; i < 17; i++) now[i] = btn(i);
       const down = (i) => now[i] && !this.prev[i];
       const lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
-      if (now.some(Boolean) || lx || ly || rx || ry) { this.lastUse = performance.now(); if (!this.active) { this.active = true; document.body.classList.add('pad'); } }
+      if (now.some(Boolean) || lx || ly || rx || ry) {
+        this.lastUse = performance.now();
+        if (!this.active) { this.active = true; document.body.classList.add('pad'); }
+        // on phones/tablets, hide the on-screen buttons while the controller is in use; any touch brings them back
+        if (G.Touch.enabled && !document.body.classList.contains('padui')) { document.body.classList.add('padui'); G.Touch.releaseAll(); }
+      }
 
       const Gm = G.Game, I = G.Input;
       const overlay = this.overlay();
@@ -125,7 +130,8 @@
           if (down(B.RS)) I.pressed.KeyV = true;
         }
         if (Math.hypot(lx, ly) < 0.3 || -ly < 0.5 || lt) this.sprint = false;
-        if (this.sprint) { I.joySprint = true; this.wroteStick = true; } else if (this.wroteStick && !G.Touch.enabled) I.joySprint = false;
+        // only clear sprint that the controller itself turned on (touch sprint is managed by touch.js)
+        if (this.sprint) { I.joySprint = true; this.padSprint = true; } else if (this.padSprint) { I.joySprint = false; this.padSprint = false; }
 
         this.holdKey('Space', now[B.A]);
         if (down(B.B)) I.pressed.KeyC = true;
@@ -206,4 +212,5 @@
     },
   });
   P.init();
+  addEventListener('touchstart', () => document.body.classList.remove('padui'), { passive: true, capture: true });
 })();
