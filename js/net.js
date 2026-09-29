@@ -21,6 +21,8 @@
       iceServers: [
         { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
         { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+        // extra free relays on ports 80/443 (TCP too) for mobile data and strict school/work networks
+        { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
       ],
     },
   };
@@ -287,7 +289,7 @@
         players: [{ nid: 'u0', name: this.myName(), team: 'atk', w: validW(S.primary), op: validOp(S.operator) }],
       };
       peer.on('connection', (c) => this.onClientConn(c));
-      peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) { /* ignore */ } });
+      peer.on('disconnected', () => this.safeReconnect(peer));
       peer.on('error', (e) => { if (e.type !== 'peer-unavailable') console.warn('[net]', e.type); });
       if (this.lobby.pub) this.claimSlot();
       this.startHeartbeat();
@@ -304,12 +306,20 @@
           if (!this.isHost || !this.lobby || !this.lobby.pub) { sp.destroy(); break; }
           this.slotPeer = sp;
           sp.on('connection', (c) => { c.on('open', () => { c.send(this.publicInfo()); setTimeout(() => c.close(), 2000); }); });
-          sp.on('disconnected', () => { try { sp.reconnect(); } catch (e) { /* ignore */ } });
+          sp.on('disconnected', () => this.safeReconnect(sp));
           sp.on('error', () => {});
           break;
         } catch (e) { if (e.type !== 'unavailable-id') break; }
       }
       this.claiming = false;
+    },
+    // PeerJS also fires 'disconnected' while a peer is being destroyed on purpose (leaving the lobby).
+    // Reconnecting then would leave a ghost lobby online, so wait and only reconnect peers we still own.
+    safeReconnect(p) {
+      setTimeout(() => {
+        if (p.destroyed || !p.disconnected || (p !== this.peer && p !== this.slotPeer)) return;
+        try { p.reconnect(); } catch (e) { /* ignore */ }
+      }, 1500);
     },
     releaseSlot() { if (this.slotPeer) { try { this.slotPeer.destroy(); } catch (e) { /* ignore */ } this.slotPeer = null; } },
     publicInfo() {
