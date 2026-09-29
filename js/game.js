@@ -32,7 +32,7 @@
   });
   addEventListener('wheel', (e) => { I.wheel = Math.sign(e.deltaY); }, { passive: true });
 
-  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0, padSens: 1.0, teamHL: true, mpName: '', mpMode: 'team', mpBots: true, mpPub: true };
+  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0, padSens: 1.0, teamHL: true, killcam: true, mpName: '', mpMode: 'team', mpBots: true, mpPub: true };
   const PLAY_STATES = ['live', 'prep', 'roundEnd'];
 
   // ------------------------------------------------------------- GAME
@@ -203,6 +203,12 @@
       });
       $('menuBtn').addEventListener('click', () => { $('matchEnd').style.display = 'none'; if (this.mp) G.Net.leave(); else this.quitToMenu(); });
       // teammate highlight
+      const kcSel = () => { for (const b of $('kcChoices').children) b.classList.toggle('sel', b.dataset.k === (S.killcam !== false ? 'on' : 'off')); };
+      kcSel();
+      $('kcChoices').addEventListener('click', (e) => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.killcam = b.dataset.k === 'on'; kcSel(); this.saveSettings(); G.Audio.click();
+      });
       const hlSel = () => { for (const b of $('hlChoices').children) b.classList.toggle('sel', b.dataset.h === (S.teamHL !== false ? 'on' : 'off')); };
       hlSel();
       $('hlChoices').addEventListener('click', (e) => {
@@ -286,6 +292,7 @@
       this.paused = false;
       if (document.pointerLockElement) document.exitPointerLock();
       G.Grenades.clear(); G.FX.clear(); G.W.resetPanels(); G.Nav.rebuildAll();
+      G.KillCam.reset();
       this.showMenu();
     },
 
@@ -369,6 +376,7 @@
     resetRoundWorld() {
       G.Grenades.clear(); G.FX.clear(); G.W.resetPanels(); G.Nav.rebuildAll();
       if (G.Operators) G.Operators.clear();
+      G.KillCam.reset();
       this.events = [];
       this.hc = {};
       this.secure = 0; this.timer = 180; this.spec = null; this.deathT = 0;
@@ -483,6 +491,7 @@
       setTimeout(() => el.remove(), 6600);
       if (victim.isPlayer) {
         this.deathT = 0;
+        G.KillCam.onPlayerKilled(killer && killer !== victim ? killer : null, head);
         this.big('ELIMINATED', killer && killer !== victim ? `BY ${kname}${tk ? ' (TEAMKILL)' : ''}` : '', 'def');
       } else if (killer && killer.isPlayer) {
         G.Audio.hit(head, true);
@@ -549,6 +558,7 @@
     loop(t) {
       requestAnimationFrame((tt) => this.loop(tt));
       const dt = Math.min(0.05, (t - this.last) / 1000);
+      if (!(dt > 0)) return; // same or older timestamp: nothing to simulate
       this.last = t;
       if (G.Pad) G.Pad.poll(dt);
       // multiplayer keeps simulating while the pause menu is open (you just can't act)
@@ -592,6 +602,7 @@
       G.FX.update(dt);
       G.VM.update(dt);
       G.Mods.update();
+      G.KillCam.update(dt);
       this.shakeAmt = G.damp(this.shakeAmt, 0, 6, dt);
       if (!p.alive) this.deathT += dt;
 
@@ -625,7 +636,7 @@
         else if (this.timer <= 0) this.endRound('def', 'TIME EXPIRED');
       }
       // spectate cycling
-      if (!p.alive && I.pressed.mouse0) this.nextSpec();
+      if (!p.alive && I.pressed.mouse0 && !G.KillCam.active) this.nextSpec();
     },
 
     matchOver() {
@@ -672,6 +683,7 @@
         p.model.root.visible = !p.alive || !!G.Recon.active;
         if (p.alive && G.Recon.applyView(cam)) { /* remote view; body stays in the world */ }
         else if (p.alive) { p.updateView(cam, dt); showVM = true; }
+        else if (G.KillCam.apply(cam, dt)) { /* replay from the killer's eyes */ }
         else if (this.deathT > 2.5) {
           if (!this.spec || !this.spec.alive) this.nextSpec();
           if (this.spec) {

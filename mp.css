@@ -74,3 +74,20 @@ body.touch #lbMsgs { height: 90px; }
 
 /* allow finger-scrolling of the multiplayer screens on phones */
 #mp, #lobby, .mpbox, #lbMsgs, #mpList { touch-action: pan-y; }
+
+/* ---------- kill cam ---------- */
+#killcam { position: absolute; inset: 0; display: none; pointer-events: none; }
+.kcBar { position: absolute; left: 0; right: 0; background: rgba(0, 0, 0, 0.82); }
+.kcBar.top { top: 0; height: 11vh; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; }
+.kcBar.bottom { bottom: 0; height: 15vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.kcTag { font-family: 'Oswald', sans-serif; font-weight: 700; letter-spacing: 8px; font-size: 22px; color: #ff5a4a; }
+.kcTag::before { content: ''; display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #ff3b30; margin-right: 10px; animation: kcRec 1s steps(2) infinite; }
+@keyframes kcRec { 50% { opacity: 0; } }
+.kcWho { font-size: 20px; font-weight: 700; letter-spacing: 3px; }
+.kcWho b { color: var(--def); }
+#kcInfo { font-size: 15px; font-weight: 600; letter-spacing: 2px; color: var(--dim); }
+.kcSkip { font-size: 12px; letter-spacing: 2px; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
+body.playing #killcam[style*="block"] ~ #center { display: none; }
+body.touch .kcTag { font-size: 16px; }
+body.touch .kcWho { font-size: 15px; }
+body.touch .kcSkip::after { content: ''; }

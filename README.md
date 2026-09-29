@@ -86,3 +86,7 @@ Press **MULTIPLAYER** on the main menu. No server setup is needed: game traffic 
 ## Teammate highlight
 
 Teammates have a blue outline and a name tag that stays visible through walls (with distance when they are out of sight). Toggle it under **Settings → Teammate highlight**.
+
+## Kill cam
+
+After you are killed, a short replay plays from your killer's eyes (with their shots, weapon and remaining health). Click, press Space or controller A (or tap FIRE) to skip. Toggle it under **Settings → Kill cam**.

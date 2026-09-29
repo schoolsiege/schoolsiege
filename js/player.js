@@ -486,7 +486,7 @@
         const a = Math.random() * Math.PI * 2;
         _d.copy(_f).addScaledVector(_r, Math.cos(a) * r).addScaledVector(_u, Math.sin(a) * r).normalize();
         const end = G.fireBullet(this, this.eye.x, this.eye.y, this.eye.z, _d.x, _d.y, _d.z, def, p);
-        if (p === 0 && G.Net && G.Net.inGame) G.Net.sendShot(this, end, def.key);
+        if (p === 0) { G.KillCam.shot(this, end); if (G.Net && G.Net.inGame) G.Net.sendShot(this, end, def.key); }
       }
       // recoil
       const k = (1 - 0.3 * this.ads) * (M.noRecoil ? 0 : 1);

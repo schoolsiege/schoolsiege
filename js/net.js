@@ -937,6 +937,7 @@
       for (let i = 0; i < 4; i++) G.FX.dust.emit(end.x, end.y, end.z, G.randn() * 0.8, Math.random() * 1.2, G.randn() * 0.8, 0.4, 0.75, 0.72, 0.68, 0.9, 9, 1.5);
       const def = G.WEAPONS[d.w] || G.WEAPONS.ar;
       G.Audio.shot(def.sound, mz, false);
+      G.KillCam.shot(e, end);
       if (this.isHost) G.Game.soundEvent(e.pos, def.sound === 'shotgun' ? 55 : 45, e.team, 'shot');
       const pl = G.Game.player;
       if (pl.alive && G.Game.isEnemy(e, pl)) {

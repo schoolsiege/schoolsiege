@@ -511,6 +511,7 @@
         if (p === 0 || Math.random() < 0.3) G.FX.tracer(mz.x, mz.y, mz.z, end.x, end.y, end.z);
       }
       G.FX.muzzle3P(mz, dir);
+      if (end) G.KillCam.shot(this, end);
       if (G.Net && G.Net.inGame && end) G.Net.sendShot(this, end, this.def.key);
       G.Audio.shot(def.sound, mz, false);
       G.Game.soundEvent(this.pos, def.sound === 'shotgun' ? 55 : 45, this.team, 'shot');
@@ -555,8 +556,10 @@
       G.W.collide(this.pos, 0.3, 0.36, 1.8);
       G.Game.pushEntities(this);
       const moved = Math.hypot(this.pos.x - ox, this.pos.z - oz);
-      this.vel.x = (this.pos.x - ox) / dt * 0.5 + this.vel.x * 0.5;
-      this.vel.z = (this.pos.z - oz) / dt * 0.5 + this.vel.z * 0.5;
+      if (dt > 1e-4) {
+        this.vel.x = (this.pos.x - ox) / dt * 0.5 + this.vel.x * 0.5;
+        this.vel.z = (this.pos.z - oz) / dt * 0.5 + this.vel.z * 0.5;
+      }
       // stuck detection
       if (this.want.lengthSq() > 0.5 && !this.breach) {
         this.stuckT += dt;
