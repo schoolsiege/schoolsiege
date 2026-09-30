@@ -15,7 +15,7 @@ Each round starts with a 30-second droning phase. Press **Enter** or tap **START
 | Space | Drone jump (1.2-second cooldown) |
 | Hold Shift | Drone boost: 2 seconds, then 6-second cooldown |
 | Click / X | Scan visible enemies; marks last 5 seconds |
-| 1 / 2 | Return to operator |
+| 1 / 2 | Return to operator | a
 | F | Operator ability |
 
 Touch controls include CAMS, DRONE, ABILITY, camera switching, jump, boost, scan and exit. Drag to look and use the left joystick to drive. Landscape provides more space.
