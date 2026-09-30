@@ -32,7 +32,7 @@
   });
   addEventListener('wheel', (e) => { I.wheel = Math.sign(e.deltaY); }, { passive: true });
 
-  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0, padSens: 1.0, teamHL: true, killcam: true, mpName: '', mpMode: 'team', mpBots: true, mpPub: true };
+  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0, padSens: 1.0, renderScale: 0, teamHL: true, killcam: true, mpName: '', mpMode: 'team', mpBots: true, mpPub: true };
   const PLAY_STATES = ['live', 'prep', 'roundEnd'];
 
   // ------------------------------------------------------------- GAME
@@ -46,7 +46,11 @@
     // touch devices never use pointer lock
     get lockless() { return this.noLock || G.Touch.enabled || (G.Pad && G.Pad.active); },
     pixelRatio() { return this.basePixelRatio() * (G.Perf ? G.Perf.scale : 1); },
+    renderScale() { const r = this.settings.renderScale; return r > 0 ? r : (G.Touch.enabled ? 0.85 : 1); },
     basePixelRatio() {
+      return this.devicePixelRatio() * this.renderScale();
+    },
+    devicePixelRatio() {
       const hi = this.settings.gfx === 'high';
       if (G.Touch.enabled) return Math.min(devicePixelRatio, hi ? 1.5 : 1);
       return Math.min(devicePixelRatio, hi ? 1.5 : 1);
@@ -64,7 +68,12 @@
       G.Touch.setEnabled(touch);
       G.Mods.load();
       const hi = this.settings.gfx === 'high';
-      const r = (this.renderer = new THREE.WebGLRenderer({ antialias: !touch, powerPreference: 'high-performance' }));
+      // Create the WebGL context ourselves: three.js always asks for a transparent canvas, which Safari then
+      // has to blend with the page every frame. An opaque, low-latency context is cheaper and responds sooner.
+      const canvas = document.createElement('canvas');
+      const attrs = { alpha: false, depth: true, stencil: false, antialias: !touch, premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'high-performance', desynchronized: true };
+      const ctx = canvas.getContext('webgl2', attrs) || canvas.getContext('webgl', attrs);
+      const r = (this.renderer = new THREE.WebGLRenderer(ctx ? { canvas, context: ctx, antialias: !touch } : { antialias: !touch, powerPreference: 'high-performance' }));
       r.setPixelRatio(this.pixelRatio());
       r.setSize(innerWidth, innerHeight);
       r.outputEncoding = THREE.sRGBEncoding;
@@ -194,6 +203,9 @@
       slider('vol', 'vol', (v) => Math.round(v * 100) + '%');
       slider('touchSens', 'touchSens', (v) => v.toFixed(2));
       slider('padSens', 'padSens', (v) => v.toFixed(2));
+      if (!(S.renderScale > 0)) { S.renderScale = this.renderScale(); }
+      slider('renderScale', 'renderScale', (v) => Math.round(v * 100) + '%');
+      $('renderScale').addEventListener('change', () => { this.renderer.setPixelRatio(this.pixelRatio()); this.resize(); });
       $('deployBtn').addEventListener('click', () => {
         G.Audio.init(); G.Audio.setVolume(S.vol);
         if (G.Touch.enabled) this.goFullscreen();
@@ -723,18 +735,21 @@
     updateHUD() {
       const p = this.player, cache = (this.hc = this.hc || {});
       const set = (id, v, prop = 'textContent') => { if (cache[id] !== v) { cache[id] = v; $(id)[prop] = v; } };
+      // write styles/classes only when they change — every DOM write can force a layout pass on iPad
+      const css = (id, prop, v) => { const k = id + '.' + prop; if (cache[k] !== v) { cache[k] = v; $(id).style[prop] = v; } };
+      const cls = (id, c, on) => { const k = id + ':' + c; on = !!on; if (cache[k] !== on) { cache[k] = on; $(id).classList.toggle(c, on); } };
       const t = Math.max(0, this.state === 'prep' ? this.prepT : this.timer);
       const tc = this.state === 'prep' ? Math.ceil(t) : Math.floor(t);
       const tt = `${Math.floor(tc / 60)}:${String(tc % 60).padStart(2, '0')}`;
       set('timer', tt);
-      $('timer').classList.toggle('low', this.state === 'live' && t < 30);
+      cls('timer', 'low', this.state === 'live' && t < 30);
       if (p.alive) {
         const w = p.w;
         set('hpNum', String(Math.ceil(p.hp)));
         const hpf = Math.max(0, p.hp) + '%';
         if (cache.hpf !== hpf) { cache.hpf = hpf; $('hpFill').style.width = hpf; $('hpFill').classList.toggle('low', p.hp < 35); }
         set('mag', String(w.mag));
-        $('mag').classList.toggle('low', w.mag <= Math.ceil(w.def.mag * 0.25));
+        cls('mag', 'low', w.mag <= Math.ceil(w.def.mag * 0.25));
         set('reserve', String(w.reserve));
         set('weaponName', w.def.name);
         set('gadgetCount', 'x' + p.grenades);
@@ -751,8 +766,8 @@
           ch.children[0].style.top = -(gap + 9) + 'px'; ch.children[1].style.top = gap + 'px';
           ch.children[2].style.left = -(gap + 9) + 'px'; ch.children[3].style.left = gap + 'px';
         }
-        $('leanL').style.opacity = p.lean < -0.3 ? 1 : 0;
-        $('leanR').style.opacity = p.lean > 0.3 ? 1 : 0;
+        css('leanL', 'opacity', p.lean < -0.3 ? '1' : '0');
+        css('leanR', 'opacity', p.lean > 0.3 ? '1' : '0');
         const st = p.vault ? 'VAULTING' : p.crouch > 0.5 ? 'CROUCHED' : p.sprint > 0.5 ? 'SPRINTING' : '';
         set('stance', st);
         // contextual hint
@@ -768,7 +783,7 @@
         set('hint', hint);
         set('spectate', '');
       } else {
-        $('crosshair').style.opacity = 0; cache.cho = '0';
+        if (cache.cho !== '0') { $('crosshair').style.opacity = 0; cache.cho = '0'; }
         set('hint', '');
         set('hpNum', '0');
         set('spectate', this.spec && this.deathT > 2.5 ? `SPECTATING ${this.spec.name} · ${G.Touch.enabled ? 'TAP FIRE' : 'CLICK'} TO SWITCH` : '');
@@ -778,34 +793,34 @@
       const o = G.MAP.objective.clone().project(this.camera);
       if (!this.hackerMode && o.z < 1 && (this.state === 'live' || this.state === 'prep')) {
         const x = (o.x * 0.5 + 0.5) * innerWidth, y = (-o.y * 0.5 + 0.5) * innerHeight;
-        om.style.display = 'flex';
-        om.style.left = G.clamp(x, 40, innerWidth - 40) + 'px'; om.style.top = G.clamp(y, 80, innerHeight - 60) + 'px';
+        css('objMarker', 'display', 'flex');
+        css('objMarker', 'transform', `translate(${Math.round(G.clamp(x, 40, innerWidth - 40))}px, ${Math.round(G.clamp(y, 80, innerHeight - 60))}px) translate(-50%, -50%)`);
         set('objDist', `OBJECTIVE ${Math.round(this.camera.position.distanceTo(G.MAP.objective))}m`);
         const ads = p.alive && p.ads > 0.5 && Math.hypot(x - innerWidth / 2, y - innerHeight / 2) < 120;
-        om.style.opacity = ads ? 0.25 : 1;
-      } else om.style.display = 'none';
+        css('objMarker', 'opacity', ads ? '0.25' : '1');
+      } else css('objMarker', 'display', 'none');
       // secure bar
       const sb = $('secure');
       const showSecure = !this.hackerMode && this.state === 'live' && (this.zoneAtk > 0 || this.secure > 0);
-      sb.style.display = showSecure ? 'block' : 'none';
+      css('secure', 'display', showSecure ? 'block' : 'none');
       if (showSecure) {
         const contested = this.zoneAtk > 0 && this.zoneDef > 0;
-        sb.classList.toggle('contested', contested);
+        cls('secure', 'contested', contested);
         set('secureLabel', contested ? 'CONTESTED' : this.zoneAtk > 0 ? 'SECURING AREA' : 'AREA SECURE DECAYING');
-        $('secureFill').style.width = (this.secure / 10) * 100 + '%';
+        css('secureFill', 'width', Math.round(this.secure * 10) + '%');
       }
       // big message fade
       if (this.bigT > 0) {
         this.bigT -= 1 / 60;
-        const op = String(Math.min(1, this.bigT * 1.5));
-        $('center').style.opacity = this.state === 'roundEnd' ? '1' : op;
-      } else if (this.state !== 'roundEnd') $('center').style.opacity = '0';
+        const op = String(Math.round(Math.min(1, this.bigT * 1.5) * 20) / 20);
+        css('center', 'opacity', this.state === 'roundEnd' ? '1' : op);
+      } else if (this.state !== 'roundEnd') css('center', 'opacity', '0');
       // scoreboard
       const sbd = $('scoreboard');
       if (I.keys.Tab) {
-        sbd.style.display = 'block';
+        css('scoreboard', 'display', 'block');
         $('sbBody').innerHTML = this.entities.map((e) => `<tr class="${e.team}${e.alive ? '' : ' dead'}"><td>${e.name}${this.hackerMode ? ' · ' + e.wins + ' W' : ''}</td><td>${e.kills}</td><td>${e.deaths}</td><td>${e.alive ? Math.ceil(e.hp) + ' HP' : 'DEAD'}</td></tr>`).join('');
-      } else sbd.style.display = 'none';
+      } else css('scoreboard', 'display', 'none');
       if (cache.score !== this.score.atk + '-' + this.score.def) { cache.score = this.score.atk + '-' + this.score.def; this.buildIcons(); }
     },
   });

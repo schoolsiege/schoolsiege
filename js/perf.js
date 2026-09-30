@@ -74,7 +74,7 @@
       const avg = this.acc / this.n * 1000;
       this.acc = 0; this.n = 0;
       let s = this.scale;
-      if (avg > 19) { this.slowT++; this.fastT = 0; } else if (avg < 17.3) { this.fastT++; this.slowT = 0; } else { this.slowT = 0; this.fastT = 0; }
+      if (avg > 18.2) { this.slowT++; this.fastT = 0; } else if (avg < 17.3) { this.fastT++; this.slowT = 0; } else { this.slowT = 0; this.fastT = 0; }
       if (this.slowT >= 1 && s > 0.62) { s = Math.max(0.6, s - 0.1); this.slowT = 0; }
       else if (this.fastT >= 4 && s < 1) { s = Math.min(1, s + 0.05); this.fastT = 0; }
       if (s !== this.scale) { this.scale = s; this.applyScale(); }

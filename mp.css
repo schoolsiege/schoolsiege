@@ -94,3 +94,6 @@ body.touch .kcSkip::after { content: ''; }
 
 /* controller in use on a phone/tablet: hide the touch buttons until the screen is touched again */
 body.padui #touch { visibility: hidden; }
+
+/* objective marker is positioned with transform (no layout per frame) */
+#objMarker { left: 0; top: 0; will-change: transform; }

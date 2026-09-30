@@ -109,7 +109,9 @@
       }
     },
     draw(camera) {
-      const box = document.getElementById('intelMarkers'); box.replaceChildren();
+      // only touch the page when there are markers (or some need clearing): DOM churn costs frames on iPad
+      const box = document.getElementById('intelMarkers');
+      if (this.marks.size || box.childElementCount) box.replaceChildren();
       for (const [e, mark] of this.marks) {
         if (!e.alive || G.time > mark.until || !['prep', 'live'].includes(G.Game.state)) { this.marks.delete(e); continue; }
         const p = mark.pos.clone().project(camera);
@@ -120,7 +122,8 @@
       }
       const p = G.Game.player, spec = this.roster[p.operator];
       if (!spec) return;
-      document.getElementById('abilityStatus').textContent = `F · ${spec.ability} · ${p.abilityCharges === Infinity ? '∞' : p.abilityCharges} · ${G.Game.state !== 'live' ? 'ACTION PHASE ONLY' : p.sensorT > 0 ? 'SCANNING' : p.abilityCd > 0 ? Math.ceil(p.abilityCd) + 's' : 'READY'}`;
+      const txt = `F · ${spec.ability} · ${p.abilityCharges === Infinity ? '∞' : p.abilityCharges} · ${G.Game.state !== 'live' ? 'ACTION PHASE ONLY' : p.sensorT > 0 ? 'SCANNING' : p.abilityCd > 0 ? Math.ceil(p.abilityCd) + 's' : 'READY'}`;
+      if (txt !== this._status) { this._status = txt; document.getElementById('abilityStatus').textContent = txt; }
     },
   });
 })();
