@@ -52,12 +52,14 @@
         lens.scale.setScalar(R - 0.002); lens.position.set(0, y, z - 0.048);
         group.add(lens);
         const rz = z - 0.05;
-        const ring = new THREE.Mesh(new THREE.RingGeometry(0.0021, 0.0027, 28), M.redDot);
+        // circle with a centre dot, and a separate post starting a little below the circle
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.0042, 0.0051, 40), M.redDot);
         ring.position.set(0, y, rz); ring.renderOrder = 10; group.add(ring);
         const dot = new THREE.Mesh(G.geo.circle, M.redDot);
-        dot.scale.setScalar(0.00055); dot.position.set(0, y, rz); dot.renderOrder = 10; group.add(dot);
+        dot.scale.setScalar(0.0009); dot.position.set(0, y, rz); dot.renderOrder = 10; group.add(dot);
         const post = new THREE.Mesh(G.geo.plane, M.redDot);
-        post.scale.set(0.0005, 0.0075, 1); post.position.set(0, y - 0.0027 - 0.00375, rz); post.renderOrder = 10; group.add(post);
+        const top = y - 0.0051 - 0.0032, len = 0.012;
+        post.scale.set(0.0008, len, 1); post.position.set(0, top - len / 2, rz); post.renderOrder = 10; group.add(post);
       }
       out.sight = { y, z: z - 0.05 };
     };
