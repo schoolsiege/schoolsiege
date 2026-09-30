@@ -114,8 +114,8 @@
       this.model.root.visible = false;
       G.scene.add(this.model.root);
     }
-    spawn(x, z, yaw, primary) {
-      this.pos.set(x, 0.02, z); this.vel.set(0, 0, 0);
+    spawn(x, z, yaw, primary, y) {
+      this.pos.set(x, (y || 0) + 0.02, z); this.vel.set(0, 0, 0);
       this.yaw = yaw; this.pitch = 0;
       this.hp = 100; this.alive = true;
       this.lean = 0; this.leanTarget = 0; this.leanToggle = 0;
@@ -315,9 +315,10 @@
     }
 
     surface() {
-      const x = this.pos.x, z = this.pos.z;
-      if (G.MAP.indoors(x, z)) {
-        for (const r of G.MAP.rooms) if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return G.PHYS[r.floor] || 'concrete';
+      const x = this.pos.x, z = this.pos.z, y = this.pos.y;
+      if (G.MAP.surface) return G.MAP.surface(x, z, y);
+      if (G.MAP.indoors(x, z, y)) {
+        for (const r of G.MAP.rooms) if (G.roomIn(r, x, z, y)) return G.PHYS[r.floor] || 'concrete';
         return 'wood';
       }
       if (z > 19 || (z < -16 && Math.abs(x) < 22) || (Math.abs(x) < 19 && Math.abs(z) < 19)) return 'concrete';

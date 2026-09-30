@@ -44,6 +44,10 @@
   }
   const solidOnly = (x0, y0, z0, x1, y1, z1, phys) => G.W.addBox(Math.min(x0, x1), y0, Math.min(z0, z1), Math.max(x0, x1), y1, Math.max(z0, z1), phys || 'concrete', false);
 
+  // Multi-floor maps build a floor at a time: BASE lifts walls/doors, OY lifts furniture (both 0 elsewhere).
+  let BASE = 0, OY = 0;
+  function onFloor(y, fn) { const b = BASE, o = OY; BASE = OY = y; try { fn(); } finally { BASE = b; OY = o; } }
+
   // Local frame with 90° rotations. rot: 0..3 quarter turns.
   function frame(ox, oz, rot) {
     const tr = (lx, lz) => {
@@ -59,11 +63,11 @@
       rotY: (rot & 3) * Math.PI / 2,
       box(mat, lx0, y0, lz0, lx1, y1, lz1, o) {
         const a = tr(lx0, lz0), b = tr(lx1, lz1);
-        box(mat, a[0], y0, a[1], b[0], y1, b[1], o);
+        box(mat, a[0], y0 + OY, a[1], b[0], y1 + OY, b[1], o);
       },
       mesh(geo, mat, lx, y, lz, rx, ry, rz, sx, sy, sz) {
         const p = tr(lx, lz);
-        decor.add(geo, mat, p[0], y, p[1], rx || 0, (ry || 0) + (rot & 3) * Math.PI / 2, rz || 0, sx, sy, sz);
+        decor.add(geo, mat, p[0], y + OY, p[1], rx || 0, (ry || 0) + (rot & 3) * Math.PI / 2, rz || 0, sx, sy, sz);
       },
     };
   }
@@ -94,34 +98,34 @@
   function barricade(axis, c, o, opt) {
     const o0 = o.at - o.w / 2, o1 = o.at + o.w / 2;
     // A visible floor gap lets the small recon drone pass under door barricades.
-    const p = G.W.addPanel({ axis, u0: o0 + 0.01, u1: o1 - 0.01, y0: o.y0 > 0 ? o.y0 + 0.02 : 0.22, y1: o.y1 - 0.02, c0: c - 0.035, c1: c + 0.035, kind: 'barricade', cw: 0.34, ch: 0.26 });
+    const p = G.W.addPanel({ axis, u0: o0 + 0.01, u1: o1 - 0.01, y0: BASE + (o.y0 > 0 ? o.y0 + 0.02 : 0.22), y1: BASE + o.y1 - 0.02, c0: c - 0.035, c1: c + 0.035, kind: 'barricade', cw: 0.34, ch: 0.26 });
     if (opt) p.optional = true;
   }
   function softWall(axis, c, a, b, ops, tint, t) {
     t = t || 0.16;
     const H = 3.2;
     for (const p of pieces(a, b, H, ops)) {
-      G.W.addPanel({ axis, u0: p.u0, u1: p.u1, y0: p.y0, y1: p.y1, c0: c - t / 2, c1: c + t / 2, kind: 'soft', cw: 0.25, ch: 0.25, tint });
+      G.W.addPanel({ axis, u0: p.u0, u1: p.u1, y0: BASE + p.y0, y1: BASE + p.y1, c0: c - t / 2, c1: c + t / 2, kind: 'soft', cw: 0.25, ch: 0.25, tint });
     }
     for (const o of ops) if (doorLike(o)) barricade(axis, c, o, true); else if (o.bar) barricade(axis, c, o);
   }
   // static wall made of layers [{mat, o0, o1, h}] (offsets along c)
   function staticWall(axis, c, a, b, ops, layers) {
     for (const L of layers) {
-      for (const p of pieces(a, b, L.h, ops)) boxAlong(L.mat, axis, p.u0, p.u1, p.y0, p.y1, c + L.o0, c + L.o1);
+      for (const p of pieces(a, b, L.h, ops)) boxAlong(L.mat, axis, p.u0, p.u1, BASE + p.y0, BASE + p.y1, c + L.o0, c + L.o1);
     }
     for (const o of ops) {
       const o0 = o.at - o.w / 2, o1 = o.at + o.w / 2;
       const cMin = c + Math.min(...layers.map((l) => l.o0)), cMax = c + Math.max(...layers.map((l) => l.o1));
       // frame trims (visual)
-      boxAlong('trim', axis, o0, o0 + 0.05, o.y0, o.y1, cMin - 0.02, cMax + 0.02, { solid: false });
-      boxAlong('trim', axis, o1 - 0.05, o1, o.y0, o.y1, cMin - 0.02, cMax + 0.02, { solid: false });
-      boxAlong('trim', axis, o0, o1, o.y1 - 0.05, o.y1, cMin - 0.02, cMax + 0.02, { solid: false });
+      boxAlong('trim', axis, o0, o0 + 0.05, BASE + o.y0, BASE + o.y1, cMin - 0.02, cMax + 0.02, { solid: false });
+      boxAlong('trim', axis, o1 - 0.05, o1, BASE + o.y0, BASE + o.y1, cMin - 0.02, cMax + 0.02, { solid: false });
+      boxAlong('trim', axis, o0, o1, BASE + o.y1 - 0.05, BASE + o.y1, cMin - 0.02, cMax + 0.02, { solid: false });
       if (o.y0 > 0) {
         // sill (vaultable)
-        boxAlong('concrete', axis, o0 - 0.08, o1 + 0.08, o.y0 - 0.05, o.y0, cMin - 0.06, cMax + 0.06);
+        boxAlong('concrete', axis, o0 - 0.08, o1 + 0.08, BASE + o.y0 - 0.05, BASE + o.y0, cMin - 0.06, cMax + 0.06);
       } else {
-        boxAlong('concrete', axis, o0, o1, 0, 0.025, cMin, cMax, { solid: false });
+        boxAlong('concrete', axis, o0, o1, BASE, BASE + 0.025, cMin, cMax, { solid: false });
       }
       if (o.bar) barricade(axis, c, o); else if (doorLike(o)) barricade(axis, c, o, true);
     }
@@ -148,7 +152,7 @@
 
   // --------------------------------------------------------------- PROPS
   function crate(x, z, s, y) {
-    y = y || 0; s = s || 1;
+    y = (y || 0) + OY; s = s || 1;
     box('crate', x - s / 2, y, z - s / 2, x + s / 2, y + s, z + s / 2);
   }
   function table(f, x0, z0, x1, z1, h, mat) {
@@ -186,7 +190,7 @@
     f.box('plasticBlack', -0.3, 0.92, 0.14, 0.3, 1.26, 0.18, { solid: false });
     const p = f.tr(0, 0.137);
     const scr = new THREE.Mesh(G.geo.plane, G.M.screen);
-    scr.scale.set(0.56, 0.3, 1); scr.position.set(p[0], 1.09, p[1]); scr.rotation.y = f.rotY + Math.PI;
+    scr.scale.set(0.56, 0.3, 1); scr.position.set(p[0], OY + 1.09, p[1]); scr.rotation.y = f.rotY + Math.PI;
     scene.add(scr);
     f.box('plasticGray', -0.24, 0.76, -0.2, 0.24, 0.785, -0.05, { solid: false });
     f.box('plasticWhite', 0.35, 0.76, -0.2, 0.43, 0.785, -0.08, { solid: false });
@@ -217,19 +221,19 @@
     const p = f.tr(0, 0);
     const m = new THREE.Mesh(G.geo.box, G.M.rack);
     m.scale.set(0.62, 2.05, 0.9);
-    m.position.set(p[0], 1.025, p[1]);
+    m.position.set(p[0], OY + 1.025, p[1]);
     m.rotation.y = f.rotY;
     m.castShadow = true; m.receiveShadow = true;
     scene.add(m);
     const a = f.tr(-0.31, -0.45), b = f.tr(0.31, 0.45);
-    solidOnly(a[0], 0, a[1], b[0], 2.05, b[1], 'metal');
+    solidOnly(a[0], OY, a[1], b[0], OY + 2.05, b[1], 'metal');
   }
   function plant(x, z, big) {
     const s = big ? 1.3 : 1;
-    decor.add(G.geo.cyl, G.M.pot, x, 0.2 * s, z, 0, 0, 0, 0.2 * s, 0.4 * s, 0.2 * s);
-    decor.add(G.geo.cyl, G.M.soil, x, 0.4 * s, z, 0, 0, 0, 0.18 * s, 0.02, 0.18 * s);
-    for (let i = 0; i < 4; i++) decor.add(G.geo.ico, G.M.foliage, x + G.randn() * 0.12, (0.65 + i * 0.22) * s, z + G.randn() * 0.12, Math.random(), Math.random(), 0, 0.28 * s, 0.25 * s, 0.28 * s);
-    solidOnly(x - 0.22 * s, 0, z - 0.22 * s, x + 0.22 * s, 1.4 * s, z + 0.22 * s, 'fabric');
+    decor.add(G.geo.cyl, G.M.pot, x, OY + 0.2 * s, z, 0, 0, 0, 0.2 * s, 0.4 * s, 0.2 * s);
+    decor.add(G.geo.cyl, G.M.soil, x, OY + 0.4 * s, z, 0, 0, 0, 0.18 * s, 0.02, 0.18 * s);
+    for (let i = 0; i < 4; i++) decor.add(G.geo.ico, G.M.foliage, x + G.randn() * 0.12, OY + (0.65 + i * 0.22) * s, z + G.randn() * 0.12, Math.random(), Math.random(), 0, 0.28 * s, 0.25 * s, 0.28 * s);
+    solidOnly(x - 0.22 * s, OY, z - 0.22 * s, x + 0.22 * s, OY + 1.4 * s, z + 0.22 * s, 'fabric');
   }
   function couch(x, z, rot, len, mat) {
     const f = frame(x, z, rot);
@@ -344,12 +348,12 @@
     box('roof', x0 - 0.2, h, z0 - 0.2, x1 + 0.2, h + 0.4, z1 + 0.2, { solid: false });
   }
   function lightFixture(x, z, w, d) {
-    box('trim', x - w / 2 - 0.03, 3.14, z - d / 2 - 0.03, x + w / 2 + 0.03, 3.2, z + d / 2 + 0.03, { solid: false, faces: 8 | 1 | 2 | 16 | 32 });
-    decor.add(G.geo.box, G.M.lightPanel, x, 3.135, z, 0, 0, 0, w, 0.012, d);
+    box('trim', x - w / 2 - 0.03, OY + 3.14, z - d / 2 - 0.03, x + w / 2 + 0.03, OY + 3.2, z + d / 2 + 0.03, { solid: false, faces: 8 | 1 | 2 | 16 | 32 });
+    decor.add(G.geo.box, G.M.lightPanel, x, OY + 3.135, z, 0, 0, 0, w, 0.012, d);
   }
   function roomLight(x, z, color, intensity, dist, y) {
     const l = new THREE.PointLight(color || 0xffe2bc, (intensity || 1.0) * 1.35, (dist || 11) * 1.1, 1.3);
-    l.position.set(x, y || 2.95, z);
+    l.position.set(x, y || OY + 2.95, z);
     scene.add(l);
     G.MAP.lights.push(l);
   }
@@ -687,6 +691,7 @@
     for (const wx of [-0.6, 0.6]) for (const wz of [-0.6, 0.7]) f.mesh(G.geo.cyl, G.M.tire, wx, 0.28, wz, 0, 0, Math.PI / 2, 0.28, 0.2, 0.28);
   }
   function dataCore(x, z, y) {
+    y += OY;
     decor.add(G.geo.box, G.M.plasticBlack, x, y + 0.15, z, 0, 0.3, 0, 0.7, 0.3, 0.5);
     decor.add(G.geo.box, G.M.gunTan, x, y + 0.15, z, 0, 0.3, 0, 0.72, 0.08, 0.52);
     decor.add(G.geo.cyl, G.M.glowBlue, x, y + 0.38, z, 0, 0, 0, 0.09, 0.18, 0.09);
@@ -1101,11 +1106,415 @@
     MAP.indoors = (x, z) => x > -14 && x < 14 && z > -10 && z < 10;
   }
 
+  // =============================================================== MAP 4: CEDAR CREEK COMPOUND (basement, ground floor, upstairs)
+  const RISE = 0.17, TREAD = 0.3;
+  // a flight of n steps climbing along z (dir +1/-1) from height y0; solidTo fills underneath, otherwise a sloped underside
+  function flightZ(mat, x0, x1, zStart, dir, y0, n, solidTo) {
+    for (let i = 0; i < n; i++) {
+      const top = y0 + RISE * (i + 1), za = zStart + dir * TREAD * i, zb = zStart + dir * TREAD * (i + 1);
+      box(mat, x0, solidTo === undefined ? top - 0.32 : solidTo, Math.min(za, zb), x1, top, Math.max(za, zb));
+    }
+  }
+  function flightX(mat, z0, z1, xStart, dir, y0, n, solidTo) {
+    for (let i = 0; i < n; i++) {
+      const top = y0 + RISE * (i + 1), xa = xStart + dir * TREAD * i, xb = xStart + dir * TREAD * (i + 1);
+      box(mat, Math.min(xa, xb), solidTo === undefined ? top - 0.32 : solidTo, z0, Math.max(xa, xb), top, z1);
+    }
+  }
+  // rectangle minus rectangular holes [x0, z0, x1, z1], as merged strips
+  function slab(mat, x0, z0, x1, z1, y0, y1, holes, o) {
+    const xs = [x0, x1], zs = [z0, z1];
+    for (const h of holes) {
+      if (h[0] > x0 && h[0] < x1) xs.push(h[0]); if (h[2] > x0 && h[2] < x1) xs.push(h[2]);
+      if (h[1] > z0 && h[1] < z1) zs.push(h[1]); if (h[3] > z0 && h[3] < z1) zs.push(h[3]);
+    }
+    const uniq = (a) => [...new Set(a)].sort((p, q) => p - q);
+    const X = uniq(xs), Z = uniq(zs);
+    const inHole = (x, z) => holes.some((h) => x > h[0] && x < h[2] && z > h[1] && z < h[3]);
+    for (let j = 0; j < Z.length - 1; j++) {
+      const cz = (Z[j] + Z[j + 1]) / 2;
+      let start = null;
+      for (let i = 0; i <= X.length - 1; i++) {
+        const open = i < X.length - 1 && !inHole((X[i] + X[i + 1]) / 2, cz);
+        if (open && start === null) start = X[i];
+        if (!open && start !== null) { box(mat, start, y0, Z[j], X[i], y1, Z[j + 1], o); start = null; }
+      }
+    }
+  }
+  function bunk(x, z) {
+    const f = frame(x, z, 0);
+    for (const [a, b] of [[-0.95, -0.4], [0.95, -0.4], [-0.95, 0.4], [0.95, 0.4]]) f.box('woodDark', a - 0.04, 0, b - 0.04, a + 0.04, 1.9, b + 0.04, { solid: false });
+    f.box('woodDark', -1, 0.3, -0.45, 1, 0.4, 0.45, { solid: false });
+    f.box('sheets', -0.95, 0.4, -0.4, 0.95, 0.55, 0.4, { solid: false });
+    f.box('woodDark', -1, 1.35, -0.45, 1, 1.45, 0.45, { solid: false });
+    f.box('sheets', -0.95, 1.45, -0.4, 0.95, 1.6, 0.4, { solid: false });
+    f.box('woodDark', -1, 0.05, -0.45, 1, 1.9, 0.45, { visible: false, pen: true, phys: 'wood' });
+  }
+
+  function buildCompound(MAP) {
+    MAP.bounds = [-44, -38, 44, 34];
+    MAP.ground = 'dirt';
+    MAP.menuCam = { r: 36, h: 14 };
+    MAP.env = { sun: 0xffe3c2, sunI: 2.0, sunPos: [-30, 42, -26], hemiSky: 0xd0e0f4, hemiGround: 0x6b5a45, hemiI: 0.4, fog: 0xcbd4db, fogNear: 60, fogFar: 240,
+      sky: ['#4a7fc0', '#86b3e0', '#dde6ec', '#d8c9ad', '#77705f'], exposure: 1.0 };
+    const LB = -3.4, L1 = 0, L2 = 3.4, TOP = 6.8;
+    const SHAFT = [-5.92, 3.0, -1.08, 9.8], GSTAIR = [12.2, 3.6, 13.8, 9.8], PIT = [14.2, 5.3, 20.8, 7.1];
+
+    // ---------------- ground (with holes for the basement and the bulkhead stairs)
+    slab('grass', -60, -56, 60, 56, -1, 0, [[-14.2, -10.2, 14.2, 10.2], PIT], { phys: 'dirt' });
+    box('dirt', -9.2, 0, -30, -6.8, 0.012, -11.6, { solid: false });
+    box('dirt', -30, 0, -1, -16.8, 0.012, 3.5, { solid: false });
+    box('dirt', 21, 0, 5.3, 34, 0.012, 7.1, { solid: false });
+    box('asphalt', -60, 0, -36, 60, 0.015, -30);
+
+    // ---------------- rooms (floor finishes, names, footsteps)
+    const rooms = (MAP.rooms = [
+      { name: 'Bunker', y: LB, x0: -13.8, x1: -4, z0: -9.8, z1: 0, floor: 'concreteDark' },
+      { name: 'Boiler Room', y: LB, x0: -4, x1: 6, z0: -9.8, z1: 0, floor: 'concrete' },
+      { name: 'Cellar', y: LB, x0: 6, x1: 13.8, z0: -9.8, z1: 0, floor: 'concrete' },
+      { name: 'Basement Hall', y: LB, x0: -13.8, x1: 13.8, z0: 0, z1: 2.5, floor: 'concrete' },
+      { name: 'Workshop', y: LB, x0: -13.8, x1: -6, z0: 2.5, z1: 9.8, floor: 'concreteDark' },
+      { name: 'Basement Stairs', y: LB, x0: -6, x1: -1, z0: 2.5, z1: 9.8, floor: 'concrete' },
+      { name: 'Storage', y: LB, x0: -1, x1: 13.8, z0: 2.5, z1: 9.8, floor: 'concrete' },
+      { name: 'Meeting Hall', y: L1, x0: -13.8, x1: -2, z0: -9.8, z1: 0, floor: 'woodFloor' },
+      { name: 'Kitchen', y: L1, x0: -2, x1: 6, z0: -9.8, z1: 0, floor: 'tile' },
+      { name: 'Dining Room', y: L1, x0: 6, x1: 13.8, z0: -9.8, z1: 0, floor: 'woodFloor' },
+      { name: 'Main Hall', y: L1, x0: -13.8, x1: 13.8, z0: 0, z1: 2.5, floor: 'marble' },
+      { name: 'Office', y: L1, x0: -13.8, x1: -6, z0: 2.5, z1: 9.8, floor: 'carpetBlue' },
+      { name: 'Main Stairs', y: L1, x0: -6, x1: -1, z0: 2.5, z1: 9.8, floor: 'woodFloor' },
+      { name: 'Laundry', y: L1, x0: -1, x1: 5, z0: 2.5, z1: 9.8, floor: 'tile' },
+      { name: 'Garage', y: L1, x0: 5, x1: 13.8, z0: 2.5, z1: 9.8, floor: 'concrete' },
+      { name: 'Dormitory', y: L2, x0: -13.8, x1: -4, z0: -9.8, z1: 0, floor: 'woodFloor' },
+      { name: 'Master Bedroom', y: L2, x0: -4, x1: 6, z0: -9.8, z1: 0, floor: 'carpetRed' },
+      { name: 'Bathroom', y: L2, x0: 6, x1: 9, z0: -9.8, z1: 0, floor: 'tile' },
+      { name: 'Kids Room', y: L2, x0: 9, x1: 13.8, z0: -9.8, z1: 0, floor: 'carpetBlue' },
+      { name: 'Upper Hall', y: L2, x0: -13.8, x1: 13.8, z0: 0, z1: 2.5, floor: 'woodFloor' },
+      { name: 'Armory', y: L2, x0: -13.8, x1: -6, z0: 2.5, z1: 9.8, floor: 'concreteDark' },
+      { name: 'Upper Stairs', y: L2, x0: -6, x1: -1, z0: 2.5, z1: 9.8, floor: 'woodFloor' },
+      { name: 'Attic', y: L2, x0: -1, x1: 5, z0: 2.5, z1: 9.8, floor: 'woodFloor' },
+      { name: 'Study', y: L2, x0: 5, x1: 13.8, z0: 2.5, z1: 9.8, floor: 'woodFloor' },
+    ]);
+    const holesAt = (y) => (y === L1 ? [SHAFT] : y === L2 ? [SHAFT, GSTAIR] : []);
+    for (const y of [LB, L1, L2]) {
+      const holes = holesAt(y);
+      // structure: ceiling of the floor below on the underside, trimmed edges round stair openings
+      if (y > LB) {
+        slab('ceiling', -13.8, -9.8, 13.8, 9.8, y - 0.2, y - 0.02, holes, { faces: 8 });
+        slab('trim', -13.8, -9.8, 13.8, 9.8, y - 0.2, y - 0.02, holes, { faces: 1 | 2 | 16 | 32, solid: false });
+      } else box('concrete', -14.2, y - 0.4, -10.2, 14.2, y - 0.02, 10.2, { faces: 4 });
+      for (const r of rooms) if (r.y === y) slab(r.floor, r.x0, r.z0, r.x1, r.z1, y - 0.02, y, holes, { faces: 4 });
+    }
+    slab('ceiling', -13.8, -9.8, 13.8, 9.8, TOP - 0.2, TOP, [], { faces: 8 });
+
+    // ---------------- exterior walls, per floor
+    const ext = (base, axis, c, a, b, out, ops, basement) => onFloor(base, () => {
+      const L = basement ? [{ mat: 'concrete', o0: -0.2, o1: 0.2, h: 3.4 }]
+        : out < 0 ? [{ mat: 'siding', o0: -0.2, o1: -0.06, h: 3.4 }, { mat: 'plasterExt', o0: -0.06, o1: 0.2, h: 3.4 }]
+          : [{ mat: 'plasterExt', o0: -0.2, o1: 0.06, h: 3.4 }, { mat: 'siding', o0: 0.06, o1: 0.2, h: 3.4 }];
+      staticWall(axis, c, a, b, ops, L);
+    });
+    // basement
+    ext(LB, 'x', -10, -14.2, 14.2, -1, [], true);
+    ext(LB, 'x', 10, -14.2, 14.2, 1, [], true);
+    ext(LB, 'z', -14, -9.8, 9.8, -1, [], true);
+    ext(LB, 'z', 14, -9.8, 9.8, 1, [DOOR(6.2, 1.3)], true);
+    // ground floor
+    ext(L1, 'x', -10, -14.2, 14.2, -1, [WIN(-12), DOOR(-8, 1.3), WIN(-4.5), WIN(2), DOOR(7, 1.3), WIN(11.5)]);
+    ext(L1, 'x', 10, -14.2, 14.2, 1, [WIN(-10), WIN(2), { at: 9, w: 3.4, y0: 0, y1: 2.8, bar: true }]);
+    ext(L1, 'z', -14, -9.8, 9.8, -1, [WIN(-7), DOOR(1.25, 1.3), WIN(6)]);
+    ext(L1, 'z', 14, -9.8, 9.8, 1, [WIN(-5), DOOR(1.25, 1.3)]);
+    // upstairs
+    ext(L2, 'x', -10, -14.2, 14.2, -1, [WIN(-11), WIN(-7), WIN(-1), WIN(3), WIN(11.5)]);
+    ext(L2, 'x', 10, -14.2, 14.2, 1, [WIN(-10), WIN(2), WIN(8.5)]);
+    ext(L2, 'z', -14, -9.8, 9.8, -1, [WIN(-7), DOOR(1.25, 1.3), WIN(6)]);
+    ext(L2, 'z', 14, -9.8, 9.8, 1, [WIN(-5), WIN(1.25)]);
+
+    // ---------------- interior soft walls
+    const gray = 0xb9b6ae, cream = 0xdcd2bd, sage = 0xc3ccb8, warm = 0xd4bf9c, blue = 0xbcc6d0;
+    onFloor(LB, () => {
+      softWall('x', 0, -13.8, 13.8, [DOOR(-9), DOOR(1), DOOR(10)], gray);
+      softWall('x', 2.5, -13.8, -6, [DOOR(-10)], gray);
+      softWall('x', 2.5, -1, 13.8, [DOOR(2), DOOR(10)], gray);
+      softWall('z', -4, -9.8, 0, [DOOR(-5)], gray);
+      softWall('z', 6, -9.8, 0, [DOOR(-6)], gray);
+      softWall('z', -6, 2.5, 9.8, [], gray);
+      softWall('z', -1, 2.5, 9.8, [], gray);
+    });
+    onFloor(L1, () => {
+      softWall('x', 0, -13.8, 13.8, [DOOR(-10), DOOR(-4), DOOR(2), DOOR(10)], cream);
+      softWall('x', 2.5, -13.8, -6, [DOOR(-9.5)], cream);
+      softWall('x', 2.5, -1, 13.8, [DOOR(2), DOOR(8)], cream);
+      softWall('z', -2, -9.8, 0, [DOOR(-6)], warm);
+      softWall('z', 6, -9.8, 0, [DOOR(-4, 1.6)], sage);
+      softWall('z', 5, 2.5, 9.8, [DOOR(6)], cream);
+      softWall('z', -6, 2.5, 9.8, [], cream);
+      softWall('z', -1, 2.5, 9.8, [], cream);
+    });
+    onFloor(L2, () => {
+      softWall('x', 0, -13.8, 13.8, [DOOR(-9), DOOR(1), DOOR(7.5), DOOR(11.5)], warm);
+      softWall('x', 2.5, -13.8, -6, [DOOR(-9)], warm);
+      softWall('x', 2.5, -1, 13.8, [DOOR(2), DOOR(8)], warm);
+      softWall('z', -4, -9.8, 0, [DOOR(-3)], blue);
+      softWall('z', 6, -9.8, 0, [], cream);
+      softWall('z', 9, -9.8, 0, [], cream);
+      softWall('z', 5, 2.5, 9.8, [DOOR(7)], warm);
+      softWall('z', -6, 2.5, 9.8, [], warm);
+      softWall('z', -1, 2.5, 9.8, [], warm);
+    });
+
+    // ---------------- main stairwell: basement -> ground floor -> upstairs (switchback with a central wall)
+    flightZ('concrete', -5.92, -3.55, 3.0, 1, LB, 10, LB);
+    box('concrete', -5.92, LB, 6.0, -1.08, LB + 1.7, 9.8);
+    flightZ('concrete', -3.45, -1.08, 6.0, -1, LB + 1.7, 10, LB);
+    flightZ('woodLight', -5.92, -3.55, 3.0, 1, L1, 10);
+    box('woodLight', -5.92, L1 + 1.4, 6.0, -1.08, L1 + 1.7, 9.8);
+    flightZ('woodLight', -3.45, -1.08, 6.0, -1, L1 + 1.7, 10);
+    box('plasterExt', -3.55, LB, 3.0, -3.45, TOP - 0.2, 6.0);
+    box('woodDark', -5.92, L2, 2.96, -3.55, L2 + 1.0, 3.04); // upstairs railing over the drop
+    // garage stairs up to the study
+    flightZ('woodDark', 12.2, 13.8, 9.6, -1, L1, 20, L1);
+    box('woodDark', 12.1, L2, 3.6, 12.2, L2 + 1.0, 9.8);
+    // west balcony + outside stairs to the upstairs hall
+    box('woodDark', -16.6, L2 - 0.3, -1.2, -14.2, L2, 3.7);
+    flightZ('woodDark', -16.4, -15.0, 9.7, -1, 0, 20);
+    box('woodDark', -16.6, L2, -1.2, -16.5, L2 + 1.0, 3.7);
+    box('woodDark', -16.6, L2, -1.2, -14.2, L2 + 1.0, -1.1);
+    box('woodDark', -15.0, L2, 3.6, -14.2, L2 + 1.0, 3.7);
+    for (const [px, pz] of [[-16.5, -1.1], [-16.5, 3.6], [-15.1, 9.6], [-15.1, 6.6]]) decor.add(G.geo.cyl8, G.M.woodDark, px, L2 / 2 - 0.15, pz, 0, 0, 0, 0.07, L2 - 0.3, 0.07);
+    // basement bulkhead: outside stairs down to the storage door
+    box('concrete', 14.2, LB - 0.4, 5.3, 14.8, LB, 7.1);
+    flightX('concrete', 5.3, 7.1, 14.8, 1, LB, 20, LB);
+    box('concrete', 14.2, LB - 0.2, 4.9, 21.2, 0.3, 5.3);
+    box('concrete', 14.2, LB - 0.2, 7.1, 21.2, 0.3, 7.5);
+    decor.add(G.geo.box, G.M.sidingDark, 20.9, 0.55, 4.7, 0, 0, 0.35, 0.08, 1.1, 0.9);
+    decor.add(G.geo.box, G.M.sidingDark, 20.9, 0.55, 7.7, 0, 0, -0.35, 0.08, 1.1, 0.9);
+
+    // ---------------- roof
+    const ang = 0.4, half = 10.9, sl = half / Math.cos(ang), rise = half * Math.tan(ang);
+    for (const s of [-1, 1]) decor.add(G.geo.box, G.M.roof, 0, TOP + rise / 2 + 0.1, s * half / 2, s * ang, 0, 0, 29.4, 0.2, sl);
+    for (const gx of [-14, 14]) {
+      for (let k = 0; k < 10; k++) {
+        const y0 = TOP + k * 0.5, hw = half - (k * 0.5 + 0.5) / Math.tan(ang);
+        if (hw < 0.3) break;
+        box('siding', gx - 0.2, y0, -hw, gx + 0.2, y0 + 0.5, hw, { solid: false });
+      }
+    }
+    box('trim', -14.35, TOP - 0.1, -10.35, 14.35, TOP + 0.1, 10.35, { solid: false });
+    // front porch
+    box('woodDark', -10.2, 0, -11.8, -5.8, 0.12, -10.2);
+    for (const px of [-10, -6]) decor.add(G.geo.cyl8, G.M.woodDark, px, 1.4, -11.65, 0, 0, 0, 0.08, 2.8, 0.08);
+    decor.add(G.geo.box, G.M.roof, -8, 2.85, -11.1, 0.25, 0, 0, 4.8, 0.12, 2.1);
+    sign('CEDAR CREEK', -8, 2.55, -10.23, Math.PI, 2.4, 0.5, '#3b2a1a', '#e8dcc0');
+
+    // ---------------- lights
+    const lamp = (x, z, c, i) => { roomLight(x, z, c, i, 7.5); lightFixture(x, z, 1.1, 0.3); };
+    onFloor(LB, () => {
+      for (const [x, z] of [[-9, -5], [1, -5], [10, -5], [-6, 1.25], [7, 1.25], [-10, 6], [6, 6], [11, 6]]) lamp(x, z, 0xdfe6ff, 0.85);
+    });
+    onFloor(L1, () => {
+      for (const [x, z] of [[-11, -5], [-5, -5], [2, -5], [10, -5], [-8, 1.25], [6, 1.25], [-10, 6], [2, 6], [9, 6]]) lamp(x, z, 0xffdcb0, 0.95);
+    });
+    onFloor(L2, () => {
+      for (const [x, z] of [[-9, -5], [1, -5], [7.5, -5], [11.5, -5], [-8, 1.25], [7, 1.25], [-10, 6], [2, 6], [8.5, 6]]) lamp(x, z, 0xffe4c4, 0.9);
+    });
+    roomLight(-3.5, 7.8, 0xffe8cc, 0.9, 9, 5.5);
+    roomLight(-3.5, 7.8, 0xdfe6ff, 0.8, 8, -1.2);
+
+    // ---------------- furniture
+    onFloor(LB, () => {
+      // bunker (objective)
+      shelf(-13.3, -6.5, 1, 2.4, 2.2, true);
+      rack(-13.2, -2.2, 1);
+      crate(-9, -5, 0.9); dataCore(-9, -5, 0.9);
+      box('fabricBeige', -7.8, LB, -2.8, -6.2, LB + 0.9, -2.2);
+      box('fabricBeige', -12.4, LB, -8.4, -11.8, LB + 0.9, -6.8);
+      bigCrateStack(-6.6, -8.9);
+      // boiler room
+      for (const bx of [0, 3.4]) {
+        decor.add(G.geo.cyl, G.M.steel, bx, LB + 1.2, -8.4, 0, 0, 0, 0.75, 2.4, 0.75);
+        decor.add(G.geo.cyl8, G.M.darkMetal, bx, LB + 2.7, -8.4, 0, 0, 0, 0.12, 0.9, 0.12);
+        solidOnly(bx - 0.75, LB, -9.15, bx + 0.75, LB + 2.4, -7.65, 'metal');
+      }
+      decor.add(G.geo.cyl8, G.M.darkMetal, 1.7, LB + 2.9, -4, Math.PI / 2, 0, 0, 0.08, 11, 0.08);
+      crate(4.8, -1.2, 0.9);
+      // cellar
+      shelf(9.5, -9.3, 0, 3, 2.2, true);
+      for (const [bx, bz] of [[12.6, -3], [12.6, -4.2], [11.4, -3.6]]) {
+        decor.add(G.geo.cyl, G.M.woodDark, bx, LB + 0.5, bz, 0, 0, 0, 0.42, 1.0, 0.42);
+        solidOnly(bx - 0.42, LB, bz - 0.42, bx + 0.42, LB + 1.0, bz + 0.42, 'wood');
+      }
+      // workshop
+      table(frame(-10, 7.8, 0), -1.3, -0.5, 1.3, 0.5, 0.9, 'woodDark');
+      shelf(-13.3, 5.2, 1, 2, 2, true);
+      crate(-7, 9, 1);
+      // storage
+      bigCrateStack(1, 8.6);
+      crate(6.5, 9, 1.1); crate(7.7, 9, 1.0);
+      shelf(11, 9.4, 0, 3, 2.2, true);
+      crate(4.5, 4, 0.8);
+    });
+    onFloor(L1, () => {
+      // meeting hall (objective)
+      table(frame(-8, -5, 0), -1.1, -0.5, 1.1, 0.5, 0.76, 'woodDark');
+      dataCore(-8, -5, 0.76);
+      for (const cx of [-12.2, -11.4, -10.6, -5.4, -4.6, -3.8]) chair(cx, -8.6, 2);
+      for (const cx of [-12.2, -11.4, -4.6, -3.8]) chair(cx, -2.2, 0);
+      shelf(-13.35, -5, 1, 2.2, 2, true);
+      plant(-3, -1.1);
+      // kitchen
+      box('cabinet', -1.8, 0, -9.8, 4.2, 0.88, -9.2);
+      box('counterTop', -1.82, 0.88, -9.82, 4.22, 0.93, -9.15);
+      box('cabinet', 0.6, 0, -5.6, 3.4, 0.88, -4.4);
+      box('counterTop', 0.55, 0.88, -5.65, 3.45, 0.93, -4.35);
+      box('steel', 4.8, 0, -9.8, 5.8, 2.0, -9.1);
+      // dining room
+      table(frame(10.2, -5, 0), -2.2, -0.6, 2.2, 0.6, 0.76, 'woodLight');
+      for (const cx of [8.6, 9.7, 10.8, 11.9]) { chair(cx, -5.9, 2); chair(cx, -4.1, 0); }
+      box('woodDark', 13.2, 0, -8.5, 13.8, 1.9, -6.5);
+      // office
+      desk(-11, 8.6, 2); officeChair(-11, 7.6, 0);
+      shelf(-13.35, 5, 1, 2, 2, true);
+      couch(-7.8, 9.2, 2, 2.0, 'leather');
+      // laundry
+      box('plasticWhite', -0.8, 0, 9.0, 0.0, 0.9, 9.8); box('plasticWhite', 0.1, 0, 9.0, 0.9, 0.9, 9.8);
+      shelf(3.8, 9.35, 0, 2.0, 2, true);
+      // garage
+      car(8.2, 6.6, 0, 'carBlue');
+      shelf(5.5, 8.6, 1, 1.6, 2, true);
+      crate(6.2, 3.3, 0.9);
+      // main hall
+      plant(-13.2, 2.1); plant(13.2, 2.1);
+    });
+    onFloor(L2, () => {
+      // dormitory
+      for (const bx of [-12.4, -9.9, -7.4]) bunk(bx, -9.2);
+      bunk(-12.4, -1.1);
+      box('steel', -5.2, L2, -9.8, -4.3, L2 + 1.9, -8.4);
+      // master bedroom (objective)
+      box('woodDark', 3.0, L2, -9.7, 5.4, L2 + 0.5, -7.4);
+      box('sheets', 3.05, L2 + 0.5, -9.65, 5.35, L2 + 0.66, -7.45, { solid: false });
+      box('woodDark', 0.2, L2, -9.8, 1.8, L2 + 0.9, -9.0);
+      dataCore(1, -9.4, 0.9);
+      box('woodDark', -3.8, L2, -9.8, -2.6, L2 + 2.1, -9.1);
+      box('rug', -1.5, L2, -6.5, 2.5, L2 + 0.01, -3.5, { solid: false });
+      couch(-2.5, -1.2, 0, 1.6, 'fabricGreen');
+      // bathroom
+      box('plasticWhite', 6.2, L2, -9.8, 8.8, L2 + 0.6, -8.9);
+      box('plasticWhite', 8.3, L2, -4.6, 8.9, L2 + 0.45, -4.0);
+      // kids room
+      box('woodLight', 12.1, L2, -9.7, 13.7, L2 + 0.5, -7.7);
+      box('sheets', 12.15, L2 + 0.5, -9.65, 13.65, L2 + 0.64, -7.75, { solid: false });
+      crate(10, -9.2, 0.5); crate(10.7, -9.2, 0.4);
+      // armory
+      rack(-13.2, 4.6, 1); rack(-13.2, 6.2, 1); rack(-13.2, 7.8, 1);
+      table(frame(-9.5, 8.8, 0), -1.2, -0.45, 1.2, 0.45, 0.9, 'darkMetal');
+      crate(-7, 4, 0.9);
+      // attic
+      for (const [cx, cz, cs] of [[0, 9, 0.8], [1, 9.1, 0.7], [0.4, 8.2, 0.6], [4, 9, 0.9], [4, 4, 0.7]]) {
+        box('cardboard', cx - cs / 2, L2, cz - cs / 2, cx + cs / 2, L2 + cs, cz + cs / 2);
+      }
+      // study
+      desk(8.5, 9, 2); officeChair(8.5, 8, 0);
+      shelf(5.5, 8.8, 1, 1.6, 2, true);
+      plant(11.6, 3.2);
+    });
+
+    // ---------------- outdoors
+    const trees = [[-24, -20], [-30, -12], [-26, 12], [-20, 22], [-34, 24], [24, 20], [30, 26], [18, 26], [-8, 26], [10, 28], [-38, -26],
+      [38, -26], [36, 14], [-40, 4], [40, -6], [-16, -24], [16, -26], [28, -4]];
+    for (const [tx, tz] of trees) tree(tx, tz, 0.9 + Math.random() * 0.5);
+    building(24, -18, 34, -9, 5, 'corrugated');
+    car(-3, -20, 1, 'carRed'); van(6, -22, 1, 'carWhite'); car(22, 12, 0, 'carSilver');
+    dumpster(18, -6, 1);
+    // water tower
+    for (const [lx, lz] of [[-29, 18], [-27, 18], [-29, 20], [-27, 20]]) decor.add(G.geo.cyl8, G.M.darkMetal, lx, 3, lz, 0, 0, 0, 0.1, 6, 0.1);
+    decor.add(G.geo.cyl, G.M.woodDark, -28, 7.2, 19, 0, 0, 0, 1.8, 2.6, 1.8);
+    decor.add(G.geo.cone, G.M.roof, -28, 9.0, 19, 0, 0, 0, 2.0, 1.0, 2.0);
+    solidOnly(-29.2, 0, 17.8, -26.8, 6, 20.2, 'metal');
+    // rail fence
+    for (let x = -40; x < 40; x += 4) for (const fz of [-29, 30]) {
+      decor.add(G.geo.cyl8, G.M.woodDark, x, 0.6, fz, 0, 0, 0, 0.07, 1.2, 0.07);
+      decor.add(G.geo.cyl8, G.M.bark, x + 2, 0.9, fz, 0, 0, Math.PI / 2, 0.06, 4, 0.06);
+    }
+    // distant hills
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + 0.3, r = 165 + (i % 3) * 20, h = 18 + (i * 37) % 16;
+      decor.add(G.geo.sphLow, G.M.hedge, Math.cos(a) * r, -4, Math.sin(a) * r, 0, a, 0, 70, h, 55);
+    }
+    solidOnly(-44.5, -4, -38.5, 44.5, 8, -38.1); solidOnly(44.1, -4, -38.5, 44.5, 8, 34); solidOnly(-44.5, -4, -38.5, -44.1, 8, 34); solidOnly(-44.5, -4, 33.6, 44.5, 8, 34);
+
+    // ---------------- gameplay data: three objective sites, one per floor
+    MAP.sites = [
+      {
+        name: 'BUNKER', floor: 'BASEMENT', objective: new V(-9, LB + 1.3, -5), zone: { x0: -13.8, x1: -4, z0: -9.8, z1: 0, y0: LB, y1: LB + 3.2 },
+        zoneDoors: [[-9, 0, LB], [-4, -5, LB]],
+        anchors: [[-12.6, -8.8, -9, 0, LB], [-5, -1, -4, -5, LB], [-12.8, -1.2, -4, -5, LB], [-5.2, -6.2, -9, 0, LB]],
+        support: [[1, -4, -4, -5, LB], [-10, 5.5, -10, 2.5, LB], [9, 1.25, 14, 6.2, LB], [-3.3, 1.3, -3.3, 6, LB], [3, 6, 14, 6.2, LB]],
+        secure: [[-9, -2.8, LB], [-11, -6.5, LB], [-7, -7, LB], [-5.5, -3.8, LB], [-12, -3.8, LB]],
+      },
+      {
+        name: 'MEETING HALL', floor: 'GROUND FLOOR', objective: new V(-8, L1 + 1.3, -5), zone: { x0: -13.8, x1: -2, z0: -9.8, z1: 0, y0: L1, y1: L1 + 3.2 },
+        zoneDoors: [[-10, 0, L1], [-4, 0, L1], [-2, -6, L1], [-8, -10, L1]],
+        anchors: [[-12.8, -1.2, -8, -10, L1], [-3, -8.8, -8, -10, L1], [-12.8, -7.4, -10, 0, L1], [-3.2, -3.2, -12, -6, L1]],
+        support: [[2, -3, -2, -6, L1], [-9.5, 5.5, -9.5, 2.5, L1], [-3.3, 1.3, -3.3, 7, L1], [9, -2.5, 7, -10, L1], [11, 1.25, 14, 1.25, L1]],
+        secure: [[-8, -2.6, L1], [-11, -6, L1], [-5, -6.5, L1], [-6, -3, L1], [-10.5, -3.4, L1]],
+      },
+      {
+        name: 'MASTER BEDROOM', floor: 'UPSTAIRS', objective: new V(1, L2 + 1.3, -9.4), zone: { x0: -4, x1: 6, z0: -9.8, z1: 0, y0: L2, y1: L2 + 3.2 },
+        zoneDoors: [[1, 0, L2], [-4, -3, L2]],
+        anchors: [[5.2, -6.4, 1, 0, L2], [-3.2, -8.2, -4, -3, L2], [5.2, -1, -4, -3, L2], [-3.2, -4.8, 1, -10, L2]],
+        support: [[-9, -5, -4, -3, L2], [7.5, -6, 7.5, 0, L2], [-3.3, 1.3, -3.3, 6, L2], [2, 5.5, 2, 2.5, L2], [11.5, -5.5, 11.5, 0, L2]],
+        secure: [[1, -3, L2], [-2, -6, L2], [3, -6.8, L2], [4, -3, L2], [-1, -2.6, L2]],
+      },
+    ];
+    MAP.setSite = (i) => {
+      const s = MAP.sites[i];
+      MAP.site = i; MAP.objName = s.name; MAP.siteFloor = s.floor;
+      MAP.objective = s.objective; MAP.zone = s.zone; MAP.zoneDoors = s.zoneDoors;
+      MAP.anchors = s.anchors; MAP.support = s.support; MAP.secure = s.secure;
+    };
+    MAP.setSite(1);
+    MAP.roam = [[-12, 1.25, -14, 1.25, L1], [12, 1.25, 14, 1.25, L1], [10.5, 4, 9, 10, L1], [-9, 5, -10, 10, L1], [-12, 1.25, -14, 1.25, L2],
+      [9, 5, 9, 10, L2], [10, 6, 14, 6.2, LB], [-9.5, 5, -10, 2.5, LB], [2, 6, 2, 10, L1], [-9, -5, -9, 0, L2]];
+    MAP.spawns = [
+      { name: 'Front Lot', x: -2, z: -27, yaw: Math.PI },
+      { name: 'Back Field', x: 2, z: 25, yaw: 0 },
+      { name: 'West Road', x: -32, z: -2, yaw: -Math.PI / 2 },
+      { name: 'East Barn', x: 32, z: 2, yaw: Math.PI / 2 },
+    ];
+    MAP.entries = [
+      { name: 'Front Door', out: [-8, -13.5, 0], in: [-8, -7.2, 0] },
+      { name: 'Dining Door', out: [7, -13.5, 0], in: [7.5, -7.5, 0] },
+      { name: 'West Door', out: [-18, 1.25, 0], in: [-11, 1.25, 0] },
+      { name: 'East Door', out: [17.5, 1.25, 0], in: [11, 1.25, 0] },
+      { name: 'Balcony', out: [-15.4, 1.2, L2], in: [-11, 1.25, L2] },
+      { name: 'Bulkhead', out: [23, 6.2, 0], in: [10, 6.2, LB] },
+      { name: 'Garage Door', out: [9, 13.5, 0], in: [10.5, 4, 0] },
+    ];
+    MAP.camRooms = ['Bunker', 'Meeting Hall', 'Main Hall', 'Master Bedroom'];
+    MAP.roomAt = (x, z, y) => {
+      for (const r of rooms) if (G.roomIn(r, x, z, y)) return r.name;
+      if (y > 1.5 && x < -14) return 'West Balcony';
+      if (y < -0.5) return 'Bulkhead';
+      if (z < -10) return 'Front Yard';
+      if (z > 10) return 'Back Field';
+      return x < 0 ? 'West Side' : 'East Side';
+    };
+    MAP.indoors = (x, z) => x > -14 && x < 14 && z > -10 && z < 10;
+    MAP.surface = (x, z, y) => {
+      if (MAP.indoors(x, z)) { for (const r of rooms) if (G.roomIn(r, x, z, y)) return G.PHYS[r.floor] || 'concrete'; return 'wood'; }
+      if (y > 0.5) return 'wood';
+      if (y < -0.5) return 'concrete';
+      return 'dirt';
+    };
+  }
+
   // =============================================================== MAP REGISTRY / BUILD
   G.MAPS = [
     { id: 'harbor', name: 'HARBOR STREET OFFICES', desc: 'Office block · Server Room objective', build: buildHarbor },
     { id: 'warehouse', name: 'CANAL WAREHOUSE', desc: 'Container hall · Control Room objective', build: buildWarehouse },
     { id: 'chalet', name: 'SNOWPINE CHALET', desc: 'Mountain lodge · Trophy Room objective', build: buildChalet },
+    { id: 'compound', name: 'CEDAR CREEK COMPOUND', desc: 'Three floors · Basement, ground floor and upstairs objectives', build: buildCompound },
   ];
 
   const sharedGeo = () => new Set(Object.values(G.geo));

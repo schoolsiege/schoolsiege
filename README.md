@@ -46,9 +46,10 @@ Use Node and Three.js **0.149.0**:
 node tests/map-switch.mjs /path/to/three/build/three.module.js
 node tests/gameplay.mjs /path/to/three/build/three.module.js
 node tests/fortify.mjs /path/to/three/build/three.module.js
+node tests/floors.mjs /path/to/three/build/three.module.js
 ```
 
-These run production geometry, collision, navigation and game logic with real Three.js. DOM, audio output and GPU rendering are stubbed. They check map switching, the chalet roof slope, recon, device damage and bot accuracy, abilities, barricades, touch input mappings, mode isolation and match progression. `fortify.mjs` covers reinforcement, door barricades, 1v1 side swaps, scopes and the final kill cam. They do not replace visual browser or physical-phone testing.
+These run production geometry, collision, navigation and game logic with real Three.js. DOM, audio output and GPU rendering are stubbed. They check map switching, the chalet roof slope, recon, device damage and bot accuracy, abilities, barricades, touch input mappings, mode isolation and match progression. `fortify.mjs` covers reinforcement, door barricades, 1v1 side swaps, scopes and the final kill cam. `floors.mjs` checks the three-floor map: every objective spot is reachable, every spawn has a path to every floor, and a bot and the player really climb the stairs. They do not replace visual browser or physical-phone testing.
 
 ## Controller
 
@@ -72,6 +73,10 @@ Controller look sensitivity is in the main menu settings.
 ## 1v1 Duel
 
 Pick **1V1 DUEL** on the main menu to fight a single bot. First to 5 rounds. Sides switch every 2 rounds (attack rounds 1–2, defend 3–4, and so on); round wins follow the players, not the side. Online 1v1 swaps the same way.
+
+## Cedar Creek Compound (three floors)
+
+A farm compound with a **basement**, a **ground floor** and an **upstairs**, linked by a switchback main stairwell, stairs in the garage up to the study, an outside staircase to a west balcony, and bulkhead stairs from the yard down into the basement. Each round the defenders get one of three objective sites — **Bunker** (basement), **Meeting Hall** (ground floor) or **Master Bedroom** (upstairs) — shown in the round banner. The objective marker shows ▲ / ▼ when the objective is on another floor. Bots path between floors, and defender bots fortify the floor the objective is on.
 
 ## Fortifying (defense)
 

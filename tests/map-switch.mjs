@@ -83,7 +83,7 @@ function snapshot({ G, scene }) {
 }
 
 const baselines = new Map();
-for (const id of ['harbor', 'warehouse', 'chalet']) {
+for (const id of ['harbor', 'warehouse', 'chalet', 'compound']) {
   const game = createGame();
   game.build(id);
   const { G } = game;
@@ -94,7 +94,7 @@ for (const id of ['harbor', 'warehouse', 'chalet']) {
 }
 
 const game = createGame();
-for (const id of ['harbor', 'warehouse', 'chalet', 'harbor', 'chalet', 'warehouse', 'harbor']) {
+for (const id of ['harbor', 'warehouse', 'chalet', 'compound', 'harbor', 'compound', 'chalet', 'warehouse', 'harbor']) {
   const previous = game.G.mapGroup;
   game.build(id);
   if (previous) assert.equal(previous.parent, null, 'Old map is still attached');

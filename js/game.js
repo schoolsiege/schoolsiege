@@ -359,6 +359,8 @@
         const side = Math.floor((this.round - 1) / G.DUEL_SWAP) % 2 === 0 ? 'atk' : 'def';
         if (side !== this.player.team) { this.setDuelSide(side); swapped = true; }
       }
+      // maps with several objective sites (one per floor): defenders get a random one each round
+      if (MAP.sites) this.setSite((Math.random() * MAP.sites.length) | 0);
       // attackers
       const sp = G.pick(MAP.spawns);
       this.spawnName = sp.name;
@@ -366,15 +368,15 @@
       const rx = Math.cos(ry), rz = -Math.sin(ry);
       if (this.player.team === 'def') {
         const a = G.pick(MAP.anchors);
-        this.player.spawn(a[0], a[1], G.yawOf(a[2] - a[0], a[3] - a[1]), S.primary);
-      } else this.player.spawn(sp.x, sp.z, ry, S.primary);
+        this.player.spawn(a[0], a[1], G.yawOf(a[2] - a[0], a[3] - a[1]), S.primary, a[4]);
+      } else this.player.spawn(sp.x, sp.z, ry, S.primary, sp.y);
       const ents = MAP.entries.slice().sort((a, b) => Math.hypot(a.out[0] - sp.x, a.out[1] - sp.z) - Math.hypot(b.out[0] - sp.x, b.out[1] - sp.z));
       const secure = MAP.secure.slice().sort(() => Math.random() - 0.5);
       const atkBots = this.bots.filter((b) => b.team === 'atk');
       atkBots.forEach((b, i) => {
         const off = i === 0 ? -1.6 : 1.6;
         const entry = Math.random() < 0.6 ? ents[0] : ents[1 + ((Math.random() * 2) | 0)];
-        b.spawn(sp.x + rx * off - Math.sin(ry) * -1.2, sp.z + rz * off - Math.cos(ry) * -1.2, ry, 'entry', { entry, secure: secure[i] });
+        b.spawn(sp.x + rx * off - Math.sin(ry) * -1.2, sp.z + rz * off - Math.cos(ry) * -1.2, ry, 'entry', { entry, secure: secure[i], y: sp.y });
       });
       // defenders
       const anchors = MAP.anchors.slice().sort(() => Math.random() - 0.5);
@@ -384,14 +386,14 @@
       defBots.forEach((b, i) => {
         const role = roles[i];
         const spot = role === 'anchor' ? anchors[i] : role === 'support' ? support[0] : G.pick(MAP.roam);
-        b.spawn(spot[0], spot[1], G.yawOf(spot[2] - spot[0], spot[3] - spot[1]), role, { spot, crouch: role === 'anchor' && Math.random() < 0.4 ? 1 : 0 });
+        b.spawn(spot[0], spot[1], G.yawOf(spot[2] - spot[0], spot[3] - spot[1]), role, { spot, y: spot[4], crouch: role === 'anchor' && Math.random() < 0.4 ? 1 : 0 });
       });
       if (this.hackerMode) {
-        const spots = [...MAP.spawns.map((s) => [s.x, s.z]), ...MAP.anchors.slice(0, 3)];
+        const spots = [...MAP.spawns.map((s) => [s.x, s.z, 0, 0, s.y || 0]), ...MAP.anchors.slice(0, 3)];
         this.entities.forEach((e, i) => {
-          const [x, z] = spots[i], yaw = G.yawOf(MAP.objective.x - x, MAP.objective.z - z);
-          if (e.isPlayer) e.spawn(x, z, yaw, S.primary);
-          else e.spawn(x, z, yaw, 'roam', { spot: [x, z, MAP.objective.x, MAP.objective.z], entry: MAP.entries[0], secure: MAP.secure[0] });
+          const [x, z] = spots[i], y = spots[i][4] || 0, yaw = G.yawOf(MAP.objective.x - x, MAP.objective.z - z);
+          if (e.isPlayer) e.spawn(x, z, yaw, S.primary, y);
+          else e.spawn(x, z, yaw, 'roam', { spot: [x, z, MAP.objective.x, MAP.objective.z, y], y, entry: MAP.entries[0], secure: MAP.secure[0] });
         });
       }
       this.state = 'prep'; this.prepT = 30;
@@ -401,13 +403,21 @@
       const defending = this.player.team === 'def' && !this.hackerMode;
       if (!defending) G.Recon.enter('drone');
       this.buildIcons();
-      if (defending) this.big(swapped ? 'SIDES SWAPPED · DEFEND' : 'PREPARATION PHASE', `${this.fortHint()} to reinforce walls & barricade doors · ENTER / START to begin early`, 'def');
-      else this.big(swapped ? 'SIDES SWAPPED · ATTACK' : 'DRONING PHASE', 'Scout for 30s · ENTER / START to begin early', 'atk');
+      const site = MAP.sites ? `${MAP.objName} (${MAP.siteFloor}) · ` : '';
+      if (defending) this.big(swapped ? 'SIDES SWAPPED · DEFEND' : 'PREPARATION PHASE', `${site}${this.fortHint()} to reinforce walls & barricade doors · ENTER / START to begin early`, 'def');
+      else this.big(swapped ? 'SIDES SWAPPED · ATTACK' : 'DRONING PHASE', `${site}Scout for 30s · ENTER / START to begin early`, 'atk');
       $('roundLabel').textContent = defending ? 'PREP PHASE' : 'DRONE PHASE';
       $('spectate').textContent = '';
       G.Audio.beep(660, 0.12);
     },
 
+    // pick which objective site (floor) is in play this round
+    setSite(i) {
+      const MAP = G.MAP;
+      if (!MAP.sites) return;
+      this.siteIdx = G.clamp(i | 0, 0, MAP.sites.length - 1);
+      MAP.setSite(this.siteIdx);
+    },
     fortHint() { return G.Pad && G.Pad.active ? 'Hold X' : G.Touch.enabled ? 'Hold FORTIFY' : 'Hold T'; },
     setPlayerTeam(team) {
       const p = this.player;
@@ -695,7 +705,7 @@
       this.zoneAtk = 0; this.zoneDef = 0;
       for (const e of this.entities) {
         if (!e.alive) continue;
-        if (e.pos.x > z.x0 && e.pos.x < z.x1 && e.pos.z > z.z0 && e.pos.z < z.z1) { if (e.team === 'atk') this.zoneAtk++; else this.zoneDef++; }
+        if (e.pos.x > z.x0 && e.pos.x < z.x1 && e.pos.z > z.z0 && e.pos.z < z.z1 && (z.y0 === undefined || (e.pos.y > z.y0 - 0.6 && e.pos.y < z.y1))) { if (e.team === 'atk') this.zoneAtk++; else this.zoneDef++; }
       }
       if (this.state === 'live' && host) {
         if (this.zoneAtk > 0 && this.zoneDef === 0) this.secure += dt;
@@ -773,7 +783,7 @@
       if (G.Audio.ready) {
         const f = new V(0, 0, -1).applyQuaternion(cam.quaternion), u = new V(0, 1, 0).applyQuaternion(cam.quaternion);
         G.Audio.setListener(cam.position, f, u);
-        G.Audio.setAmbience(!G.MAP.indoors(cam.position.x, cam.position.z));
+        G.Audio.setAmbience(!G.MAP.indoors(cam.position.x, cam.position.z, cam.position.y));
       }
       G.Perf.frame(dt, cam);
       r.clear();
@@ -850,7 +860,9 @@
         const x = (o.x * 0.5 + 0.5) * innerWidth, y = (-o.y * 0.5 + 0.5) * innerHeight;
         css('objMarker', 'display', 'flex');
         css('objMarker', 'transform', `translate(${Math.round(G.clamp(x, 40, innerWidth - 40))}px, ${Math.round(G.clamp(y, 80, innerHeight - 60))}px) translate(-50%, -50%)`);
-        set('objDist', `OBJECTIVE ${Math.round(this.camera.position.distanceTo(G.MAP.objective))}m`);
+        // multi-floor maps: point up or down when the objective is on another floor
+        const fy = G.MAP.objective.y - 1.3 - (this.camera.position.y - 1.6), arrow = fy > 1.7 ? ' ▲' : fy < -1.7 ? ' ▼' : '';
+        set('objDist', `OBJECTIVE ${Math.round(this.camera.position.distanceTo(G.MAP.objective))}m${arrow}`);
         const ads = p.alive && p.ads > 0.5 && Math.hypot(x - innerWidth / 2, y - innerHeight / 2) < 120;
         css('objMarker', 'opacity', ads ? '0.25' : '1');
       } else css('objMarker', 'display', 'none');

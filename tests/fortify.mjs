@@ -49,7 +49,7 @@ function face(center, nx, nz, dist) {
   }
   return null;
 }
-for (const id of ['harbor', 'warehouse', 'chalet']) {
+for (const id of ['harbor', 'warehouse', 'chalet', 'compound']) {
   game.quitToMenu(); game.selectMap(id);
   const opt = W.panels.filter(q => q.optional);
   assert(opt.length >= 2, id + ' has doors to barricade');

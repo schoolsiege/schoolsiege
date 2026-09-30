@@ -54,7 +54,7 @@
         if (this.poolT <= 0 && this.cands.length) {
           this.poolT = 0.25;
           this.pick = this.cands
-            .map((l) => ({ l, d: l.position.distanceToSquared(cam.position) }))
+            .map((l) => { const p = l.position, c = cam.position; return { l, d: (p.x - c.x) ** 2 + (p.z - c.z) ** 2 + ((p.y - c.y) * 3) ** 2 }; })
             .sort((a, b) => a.d - b.d).slice(0, this.pool.length).map((x) => x.l);
         }
         if (this.pick) this.pool.forEach((pl, i) => {

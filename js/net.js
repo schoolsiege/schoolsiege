@@ -10,7 +10,7 @@
   const V = THREE.Vector3;
   const $ = (id) => document.getElementById(id);
 
-  const VERSION = 'bp-mp-3';
+  const VERSION = 'bp-mp-4';
   const TOPIC = 'breachpoint-fps/v2/';
   // tried in order; everyone normally lands on the first one
   const BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081'];
@@ -136,9 +136,10 @@
     }
     get aimYaw() { return this.yaw; }
     get aimPitch() { return this.pitch; }
-    spawnAt(x, z, yaw) {
-      this.pos.set(x, 0.02, z); this.vel.set(0, 0, 0); this.yaw = yaw; this.pitch = 0; this.lean = 0; this.crouch = 0;
-      Object.assign(this.tgt, { x, y: 0.02, z, vx: 0, vz: 0, yaw, pitch: 0, lean: 0, crouch: 0 });
+    spawnAt(x, z, yaw, y) {
+      y = (y || 0) + 0.02;
+      this.pos.set(x, y, z); this.vel.set(0, 0, 0); this.yaw = yaw; this.pitch = 0; this.lean = 0; this.crouch = 0;
+      Object.assign(this.tgt, { x, y, z, vx: 0, vz: 0, yaw, pitch: 0, lean: 0, crouch: 0 });
       this.tRecv = G.time; this.hp = 100; this.alive = true; this.deadT = 0;
       this.model.root.visible = true;
       G.updateHitShapes(this);
@@ -750,21 +751,23 @@
       }
       const teamOf = (e) => (T ? T[e.nid] : e.team);
       const atk = ents.filter((e) => teamOf(e) === 'atk'), def = ents.filter((e) => teamOf(e) === 'def');
+      const site = MAP.sites ? (Math.random() * MAP.sites.length) | 0 : -1;
+      if (site >= 0) Gm.setSite(site);
       const sp = G.pick(MAP.spawns);
       const rx = Math.cos(sp.yaw), rz = -Math.sin(sp.yaw), bx = Math.sin(sp.yaw), bz = Math.cos(sp.yaw);
       const A = {};
       atk.forEach((e, i) => {
         const side = ((i + 1) >> 1) * (i % 2 ? 1 : -1) * 1.5, back = i > 2 ? 1.6 : 0;
-        A[e.nid] = [r2(sp.x + rx * side + bx * back), r2(sp.z + rz * side + bz * back), r2(sp.yaw)];
+        A[e.nid] = [r2(sp.x + rx * side + bx * back), r2(sp.z + rz * side + bz * back), r2(sp.yaw), 0, r2(sp.y || 0)];
       });
       const spots = [...MAP.anchors.slice().sort(() => Math.random() - 0.5), ...MAP.support.slice().sort(() => Math.random() - 0.5), ...MAP.roam];
       // humans take the anchor spots first, bots get the rest
       const defOrder = [...def.filter((e) => !e.isBot), ...def.filter((e) => e.isBot)];
       defOrder.forEach((e, i) => {
         const s = spots[i % spots.length];
-        A[e.nid] = [s[0], s[1], r2(G.yawOf(s[2] - s[0], s[3] - s[1])), i];
+        A[e.nid] = [s[0], s[1], r2(G.yawOf(s[2] - s[0], s[3] - s[1])), i, s[4] || 0];
       });
-      const msg = { t: 'round', n, sp: sp.name, A, sc };
+      const msg = { t: 'round', n, sp: sp.name, A, sc, site };
       if (T) msg.T = T;
       this.broadcast(msg);
       this.applyRound(msg, true);
@@ -783,6 +786,7 @@
         }
       }
       if (d.sc) Gm.score = { atk: num(d.sc.atk), def: num(d.sc.def) };
+      if (G.MAP.sites && Number.isInteger(d.site)) Gm.setSite(d.site);
       Gm.netRoundStart(String(d.sp || ''));
       const S = Gm.settings;
       const entries = MAP.entries.slice();
@@ -792,18 +796,18 @@
       for (const e of Gm.entities) {
         const a = d.A[e.nid];
         if (!Array.isArray(a)) { e.alive = false; if (e.model) e.model.root.visible = false; continue; }
-        const x = num(a[0]), z = num(a[1]), yaw = num(a[2]);
-        if (e === Gm.player) e.spawn(x, z, yaw, S.primary);
-        else if (e.isRemotePlayer) e.spawnAt(x, z, yaw);
+        const x = num(a[0]), z = num(a[1]), yaw = num(a[2]), y = num(a[4]);
+        if (e === Gm.player) e.spawn(x, z, yaw, S.primary, y);
+        else if (e.isRemotePlayer) e.spawnAt(x, z, yaw, y);
         else if (e.isBot) {
-          if (e.puppet) { e.spawn(x, z, yaw, 'puppet', {}); e.netTarget = null; }
+          if (e.puppet) { e.spawn(x, z, yaw, 'puppet', { y }); e.netTarget = null; }
           else if (e.team === 'atk') {
             const entry = entries.sort((p, q) => Math.hypot(p.out[0] - x, p.out[1] - z) - Math.hypot(q.out[0] - x, q.out[1] - z))[Math.random() < 0.6 ? 0 : Math.min(entries.length - 1, 1 + (atkBotI % 2))];
-            e.spawn(x, z, yaw, 'entry', { entry, secure: secure[atkBotI++ % secure.length] });
+            e.spawn(x, z, yaw, 'entry', { entry, secure: secure[atkBotI++ % secure.length], y });
           } else {
-            const s = [x, z, x - Math.sin(yaw) * 5, z - Math.cos(yaw) * 5];
+            const s = [x, z, x - Math.sin(yaw) * 5, z - Math.cos(yaw) * 5, y];
             const role = roles[num(a[3]) % roles.length];
-            e.spawn(x, z, yaw, role, { spot: s, crouch: role === 'anchor' && Math.random() < 0.4 ? 1 : 0 });
+            e.spawn(x, z, yaw, role, { spot: s, y, crouch: role === 'anchor' && Math.random() < 0.4 ? 1 : 0 });
           }
           e.model.root.visible = true;
         }
@@ -848,7 +852,7 @@
       if (this.isHost) {
         const P = [me];
         for (const r of this.remotes || []) if (r.last) P.push(r.last);
-        const B = (this.netBots || []).map((b) => [b.nid, r2(b.pos.x), r2(b.pos.z), r2(b.vel.x), r2(b.vel.z), r2(b.aimYaw), r2(b.aimPitch), r2(b.lean), r2(b.crouch), Math.ceil(b.hp)]);
+        const B = (this.netBots || []).map((b) => [b.nid, r2(b.pos.x), r2(b.pos.z), r2(b.vel.x), r2(b.vel.z), r2(b.aimYaw), r2(b.aimPitch), r2(b.lean), r2(b.crouch), Math.ceil(b.hp), r2(b.pos.y)]);
         this.broadcast({ t: 'ss', tm: r2(Gm.timer), sec: r2(Gm.secure), P, B });
       } else if (this.hostConn && this.hostConn.open) {
         this.hostConn.send({ t: 's', s: me });

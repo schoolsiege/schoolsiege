@@ -37,11 +37,11 @@ G.Parts.prototype.addM = function(geo,mat,m,...rest) {
   return addM.call(this,geo,mat,m,...rest);
 };
 function tick(n=1) { for (let i=0;i<n;i++) { game.update(1/60); game.render(1/60); I.pressed = {}; I.mdx = I.mdy = 0; } }
-for (const id of ['harbor', 'warehouse', 'chalet']) {
+for (const id of ['harbor', 'warehouse', 'chalet', 'compound']) {
   game.selectMap(id); game.startMatch();
   assert.equal(game.state, 'prep'); assert.equal(R.active, 'drone');
   assert.equal(R.cameras.length, 4, id + ' camera coverage');
-  for (const c of R.cameras) assert(G.W.free(c.pos.x,c.pos.z,.2,2.45,2.95), id + ' camera embedded in wall');
+  for (const c of R.cameras) assert(G.W.free(c.pos.x,c.pos.z,.2,c.pos.y-.25,c.pos.y+.25), id + ' camera embedded in wall');
   const pos = game.player.pos.clone(); I.keys.KeyW = true; tick(20);
   assert(game.player.pos.distanceTo(pos) < .001, 'body moved while droning');
   assert(R.drone.pos.distanceTo(pos) > .5, 'drone did not move');
@@ -140,9 +140,9 @@ touch('exitRecon'); tick(); assert.equal(R.active,null); touch('exitRecon',false
 game.prepT=.01; tick(); assert.equal(game.state,'live');
 p.operator='doc'; p.hp=30; p.abilityCd=0; p.abilityCharges=3; p.switchT=0;
 touch('ability'); tick(); assert.equal(p.hp,90); touch('ability',false);
-for (const id of ['harbor','warehouse','chalet']) {
+for (const id of ['harbor','warehouse','chalet','compound']) {
   game.quitToMenu(); game.selectMap(id); game.settings.mode='hacker'; game.startMatch();
-  for(const e of game.entities) assert(G.W.free(e.pos.x,e.pos.z,.3,.36,1.8),id+' blocked hacker spawn '+e.name);
+  for(const e of game.entities) assert(G.W.free(e.pos.x,e.pos.z,.3,e.pos.y+.36,e.pos.y+1.8),id+' blocked hacker spawn '+e.name);
   for(let win=1;win<=3;win++) {
     game.startLive(); game.finishHackerRound(p); assert.equal(p.wins,win); game.endT=.01; tick();
     assert.equal(game.state,win===3?'matchEnd':'prep');

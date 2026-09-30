@@ -18,16 +18,18 @@
       this.clear();
       this.group = new THREE.Group(); G.scene.add(this.group);
       this.scanCd = 0;
-      for (const name of ROOMS[G.MAP.id]) {
+      for (const name of G.MAP.camRooms || ROOMS[G.MAP.id] || []) {
         const r = G.MAP.rooms.find((r) => r.name === name);
+        if (!r) continue;
+        const fy = r.y || 0;
         const corners = [[r.x0 + 0.45, r.z0 + 0.45], [r.x1 - 0.45, r.z1 - 0.45], [r.x0 + 0.45, r.z1 - 0.45], [r.x1 - 0.45, r.z0 + 0.45]];
-        const aim = new V((r.x0 + r.x1) / 2, 1.2, (r.z0 + r.z1) / 2);
+        const aim = new V((r.x0 + r.x1) / 2, fy + 1.2, (r.z0 + r.z1) / 2);
         let spot = null;
         for (const [x, z] of corners) {
-          if (G.W.free(x, z, 0.2, 2.45, 2.95) && G.W.clear(x, 2.7, z, aim.x, aim.y, aim.z)) { spot = new V(x, 2.7, z); break; }
+          if (G.W.free(x, z, 0.2, fy + 2.45, fy + 2.95) && G.W.clear(x, fy + 2.7, z, aim.x, aim.y, aim.z)) { spot = new V(x, fy + 2.7, z); break; }
         }
         // In a cluttered room, prefer a clear corner even if cover obscures its centre.
-        if (!spot) for (const [x, z] of corners) if (G.W.free(x, z, 0.2, 2.45, 2.95)) { spot = new V(x, 2.7, z); break; }
+        if (!spot) for (const [x, z] of corners) if (G.W.free(x, z, 0.2, fy + 2.45, fy + 2.95)) { spot = new V(x, fy + 2.7, z); break; }
         if (!spot) continue;
         const cam = this.makeDevice('camera', spot, name);
         const d = aim.sub(spot);

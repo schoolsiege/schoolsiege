@@ -38,7 +38,7 @@
         const h = G.W.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 2.3);
         if (!h || h.s.type !== 1) { if (e.isPlayer) G.Game.big('NO BREACHABLE SURFACE', 'Hammer works on soft walls and barricades'); return false; }
         if (h.s.rf && h.s.rf[h.c]) { G.Audio.impact('metal', new V(h.x, h.y, h.z)); if (e.isPlayer) G.Game.big('REINFORCED WALL', 'Steel plating · find another way in'); return false; }
-        this.breach(h, dir, 1.1);
+        this.breach(h, dir, 1.1, e.pos.y);
         G.Audio.swing(eye, e.isPlayer); G.Audio.breakWall(new V(h.x, h.y, h.z));
         if (e.isPlayer) { e.meleeT = 0.55; e.meleeDone = true; G.Game.shake(0.12); }
         else e.model.melee = 0.5;
@@ -68,10 +68,10 @@
       e.abilityCharges--; e.abilityCd = spec.cooldown;
       return true;
     },
-    breach(h, dir, radius) {
+    breach(h, dir, radius, floorY) {
       if (h.s.type === 1) {
         if (h.s.kind === 'barricade') G.W.hitBarricade(h.s, 100, dir.x, dir.y, dir.z);
-        else G.W.destroySphere(h.x, Math.min(h.y, 1.05), h.z, radius, ['soft'], dir.x, dir.y, dir.z);
+        else G.W.destroySphere(h.x, floorY === undefined ? h.y : Math.min(h.y, floorY + 1.05), h.z, radius, ['soft'], dir.x, dir.y, dir.z);
       }
       G.Game.soundEvent(new V(h.x, h.y, h.z), 28, null, 'break');
     },

@@ -11,9 +11,12 @@
     veteran: { react: [0.22, 0.38], errStart: 0.6, errMin: 0.14, errAng: 0.0045, tau: 0.45, turn: 13, head: 0.2, burst: [4, 9], spread: 1.0, pause: 0.8 },
   };
 
-  G.surfaceAt = function (x, z) {
-    if (G.MAP.indoors(x, z)) {
-      for (const r of G.MAP.rooms) if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return G.PHYS[r.floor] || 'concrete';
+  // rooms may sit on different floors (r.y = floor height)
+  G.roomIn = (r, x, z, y) => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1 && (r.y === undefined || y === undefined || (y > r.y - 0.6 && y < r.y + 2.8));
+  G.surfaceAt = function (x, z, y) {
+    if (G.MAP.surface) return G.MAP.surface(x, z, y);
+    if (G.MAP.indoors(x, z, y)) {
+      for (const r of G.MAP.rooms) if (G.roomIn(r, x, z, y)) return G.PHYS[r.floor] || 'concrete';
       return 'wood';
     }
     if (Math.abs(x) < 19 && Math.abs(z) < 19) return 'concrete';
@@ -36,7 +39,8 @@
     }
 
     spawn(x, z, yaw, role, data) {
-      this.pos.set(x, 0, z); this.vel.set(0, 0, 0); this.want.set(0, 0, 0);
+      data = data || {};
+      this.pos.set(x, data.y || 0, z); this.vel.set(0, 0, 0); this.want.set(0, 0, 0); this.vy = 0;
       this.yaw = yaw; this.aimYaw = yaw; this.aimPitch = 0;
       this.hp = 100; this.alive = true;
       this.lean = 0; this.leanTarget = 0; this.leanUntil = 0; this.peekT = 0; this.leanMaxL = 1; this.leanMaxR = 1;
@@ -201,7 +205,7 @@
       if (Math.random() < 0.3) this.crouchTarget = 1;
       if (!G.Game.hackerMode && this.team === G.Game.player.team && G.time > this.calloutT) {
         this.calloutT = G.time + 6;
-        G.Game.callout(this.name, `Contact — ${G.MAP.roomAt(e.pos.x, e.pos.z)}`);
+        G.Game.callout(this.name, `Contact — ${G.MAP.roomAt(e.pos.x, e.pos.z, e.pos.y)}`);
       }
     }
 
@@ -213,22 +217,25 @@
         const d = ev.pos.distanceTo(this.pos);
         if (d > ev.radius) continue;
         const err = d * 0.08;
-        this.alertPos.set(ev.pos.x + G.randn() * err, 0, ev.pos.z + G.randn() * err);
+        this.alertPos.set(ev.pos.x + G.randn() * err, ev.pos.y, ev.pos.z + G.randn() * err);
         this.alertT = G.time; this.alertKind = ev.kind;
       }
     }
 
     // ------------------------------------------------ navigation
-    setGoal(x, z, speed) {
-      if (!this.hasGoal || Math.hypot(x - this.goal.x, z - this.goal.z) > 0.8) { this.needPath = true; this.hasGoal = true; }
-      this.goal.set(x, 0, z);
+    setGoal(x, z, speed, y) {
+      if (y === undefined) y = this.pos.y;
+      if (!this.hasGoal || Math.hypot(x - this.goal.x, z - this.goal.z) > 0.8 || Math.abs(y - this.goal.y) > 1.2) { this.needPath = true; this.hasGoal = true; }
+      this.goal.set(x, y, z);
       this.goalSpeed = speed;
     }
+    // close to a point on the same floor
+    near(x, z, y, r) { return Math.hypot(x - this.pos.x, z - this.pos.z) < r && Math.abs((y || 0) - this.pos.y) < 1.4; }
     followPath(dt) {
       this.want.set(0, 0, 0);
       if (!this.hasGoal) return false;
       if (this.needPath) {
-        const p = G.Nav.findPath(this.pos.x, this.pos.z, this.goal.x, this.goal.z);
+        const p = G.Nav.findPath(this.pos.x, this.pos.y, this.pos.z, this.goal.x, this.goal.y, this.goal.z);
         if (p === undefined) return true;
         this.path = p; this.pathI = 0; this.needPath = false;
       }
@@ -237,18 +244,18 @@
       if (this.path && this.pathI < this.path.length) {
         const p = this.path[this.pathI];
         tx = p.x; tz = p.z;
-        if (Math.hypot(tx - this.pos.x, tz - this.pos.z) < (this.pathI === this.path.length - 1 ? 0.3 : 0.45)) { this.pathI++; return true; }
+        if (Math.hypot(tx - this.pos.x, tz - this.pos.z) < (this.pathI === this.path.length - 1 ? 0.3 : 0.45) && !(Math.abs(p.y - this.pos.y) > 0.8)) { this.pathI++; return true; }
       } else if (!this.path) {
         tx = this.goal.x; tz = this.goal.z;
-        if (Math.hypot(tx - this.pos.x, tz - this.pos.z) < 0.4) return false;
+        if (Math.hypot(tx - this.pos.x, tz - this.pos.z) < 0.4 && Math.abs(this.goal.y - this.pos.y) < 1.2) return false;
       } else return false;
       const dx = tx - this.pos.x, dz = tz - this.pos.z, d = Math.hypot(dx, dz) || 1;
       const fx = dx / d, fz = dz / d;
       // barricade in the way?
       if (!this.breach) {
         for (const h of [1.0, 0.45]) {
-          const hit = G.W.raycast(this.pos.x, h, this.pos.z, fx, 0, fz, 0.95);
-          if (hit && hit.s.type === 1 && hit.s.kind === 'barricade') { this.breach = { x: hit.x, z: hit.z, fx, fz, t: 0.25, step: 0, p: hit.s }; break; }
+          const hit = G.W.raycast(this.pos.x, this.pos.y + h, this.pos.z, fx, 0, fz, 0.95);
+          if (hit && hit.s.type === 1 && hit.s.kind === 'barricade') { this.breach = { x: hit.x, y: this.pos.y, z: hit.z, fx, fz, t: 0.25, step: 0, p: hit.s }; break; }
         }
       }
       if (this.breach) return true;
@@ -259,7 +266,7 @@
     doBreach(dt) {
       const b = this.breach;
       this.want.set(0, 0, 0);
-      this.lookAt.set(b.x, 1.0, b.z);
+      this.lookAt.set(b.x, b.y + 1.0, b.z);
       b.t -= dt;
       if (b.t <= 0) {
         b.t = 0.6;
@@ -268,12 +275,12 @@
         b.step++;
         this.model.melee = 0.4;
         const n = G.W.hitBarricade(b.p, 34, b.fx, 0, b.fz) ? 1 : 0;
-        const p = new V(b.x, y, b.z);
+        const p = new V(b.x, b.y + y, b.z);
         G.Audio.swing(p, false);
         if (!n) G.Audio.breakWood(p);
         let blocked = false;
         for (const h of [1.3, 0.9, 0.45]) {
-          const hit = G.W.raycast(this.pos.x, h, this.pos.z, b.fx, 0, b.fz, 1.3);
+          const hit = G.W.raycast(this.pos.x, this.pos.y + h, this.pos.z, b.fx, 0, b.fz, 1.3);
           if (hit && hit.s.type === 1 && hit.s.kind === 'barricade') { blocked = true; b.x = hit.x; b.z = hit.z; }
         }
         if (!blocked || b.step > 9) { this.breach = null; this.needPath = true; }
@@ -292,8 +299,8 @@
         if (t && this.visible) this.engage(dt);
         else {
           const goal = t ? t.pos : G.MAP.objective;
-          this.setGoal(goal.x, goal.z, 4.2); this.followPath(dt);
-          this.lookAt.set(goal.x, 1.3, goal.z);
+          this.setGoal(goal.x, goal.z, 4.2, t ? t.pos.y : G.MAP.objective.y - 1.2); this.followPath(dt);
+          this.lookAt.set(goal.x, (t ? t.pos.y : this.pos.y) + 1.3, goal.z);
         }
         return;
       }
@@ -308,13 +315,13 @@
         const push = this.team === 'atk' || this.role === 'roam' || Math.random() < 0.004;
         if (push || this.searching) {
           this.searching = true;
-          this.setGoal(this.lastSeenPos.x, this.lastSeenPos.z, 2.3);
+          this.setGoal(this.lastSeenPos.x, this.lastSeenPos.z, 2.3, this.lastSeenPos.y);
           this.followPath(dt);
-          this.lookAt.set(this.lastSeenPos.x, 1.3, this.lastSeenPos.z);
+          this.lookAt.set(this.lastSeenPos.x, this.lastSeenPos.y + 1.3, this.lastSeenPos.z);
           if (this.pos.distanceTo(this.lastSeenPos) < 1.5) { this.target = null; this.searching = false; }
         } else {
           this.want.set(0, 0, 0);
-          this.lookAt.set(this.lastSeenPos.x, 1.3, this.lastSeenPos.z);
+          this.lookAt.set(this.lastSeenPos.x, this.lastSeenPos.y + 1.3, this.lastSeenPos.z);
         }
         if (this.reloadT <= 0 && this.mag < this.def.mag * 0.5) this.startReload();
       } else {
@@ -323,9 +330,9 @@
         this.roleLogic(dt);
         if (now - this.alertT < 5) {
           const d = this.alertPos.distanceTo(this.pos);
-          if (d < 25) this.lookAt.set(this.alertPos.x, 1.3, this.alertPos.z);
+          if (d < 25) this.lookAt.set(this.alertPos.x, this.alertPos.y + 1.3, this.alertPos.z);
           if (this.team === 'def' && this.role !== 'anchor' && d < 14 && d > 4 && this.alertKind !== 'step') {
-            this.setGoal(this.alertPos.x, this.alertPos.z, 2.4);
+            this.setGoal(this.alertPos.x, this.alertPos.z, 2.4, this.alertPos.y);
             this.followPath(dt);
           }
         }
@@ -338,37 +345,38 @@
         let spot = this.data.spot;
         if (Gm.zoneAtk > 0 && this.role !== 'anchor') {
           if (!this.data.retake) this.data.retake = G.pick(MAP.secure);
-          spot = [this.data.retake[0], this.data.retake[1], MAP.objective.x, MAP.objective.z];
+          spot = [this.data.retake[0], this.data.retake[1], MAP.objective.x, MAP.objective.z, this.data.retake[2] || 0];
         } else if (this.role === 'roam') {
           this.roamT -= dt;
           if (this.roamT <= 0) { this.roamT = G.rand(14, 26); this.data.spot = G.pick(MAP.roam.concat(MAP.support)); spot = this.data.spot; }
         }
-        const d = Math.hypot(spot[0] - this.pos.x, spot[1] - this.pos.z);
+        const sy = spot[4] || 0;
+        const d = Math.hypot(spot[0] - this.pos.x, spot[1] - this.pos.z) + Math.abs(sy - this.pos.y) * 2;
         if (d > 0.5) {
-          this.setGoal(spot[0], spot[1], this.role === 'roam' ? 2.6 : 3.0);
+          this.setGoal(spot[0], spot[1], this.role === 'roam' ? 2.6 : 3.0, sy);
           if (!this.followPath(dt)) this.want.set(0, 0, 0);
-          if (d < 3) this.lookAt.set(spot[2], 1.3, spot[3]);
+          if (d < 3) this.lookAt.set(spot[2], sy + 1.3, spot[3]);
         } else {
           this.want.set(0, 0, 0);
           this.scan += dt * 0.4;
           const base = G.yawOf(spot[2] - this.pos.x, spot[3] - this.pos.z) + Math.sin(this.scan) * 0.35;
-          this.lookAt.set(this.pos.x - Math.sin(base) * 5, 1.3, this.pos.z - Math.cos(base) * 5);
+          this.lookAt.set(this.pos.x - Math.sin(base) * 5, this.pos.y + 1.3, this.pos.z - Math.cos(base) * 5);
           if (this.data.crouch !== undefined) this.crouchTarget = this.data.crouch;
         }
       } else {
         const en = this.data.entry;
         if (this.phase === 0) {
-          this.setGoal(en.out[0], en.out[1], 3.9);
+          this.setGoal(en.out[0], en.out[1], 3.9, en.out[2] || 0);
           this.followPath(dt);
-          if (Math.hypot(en.out[0] - this.pos.x, en.out[1] - this.pos.z) < 2.2) this.phase = 1;
+          if (this.near(en.out[0], en.out[1], en.out[2], 2.2)) this.phase = 1;
         } else if (this.phase === 1) {
-          this.setGoal(en.in[0], en.in[1], 2.6);
+          this.setGoal(en.in[0], en.in[1], 2.6, en.in[2] || 0);
           this.followPath(dt);
-          if (Math.hypot(en.in[0] - this.pos.x, en.in[1] - this.pos.z) < 1.6) this.phase = 2;
+          if (this.near(en.in[0], en.in[1], en.in[2], 1.6)) this.phase = 2;
         } else {
           const s = this.data.secure;
-          const d = Math.hypot(s[0] - this.pos.x, s[1] - this.pos.z);
-          if (d > 0.5) { this.setGoal(s[0], s[1], 2.6); if (!this.followPath(dt)) this.want.set(0, 0, 0); }
+          const d = Math.hypot(s[0] - this.pos.x, s[1] - this.pos.z) + Math.abs((s[2] || 0) - this.pos.y) * 2;
+          if (d > 0.5) { this.setGoal(s[0], s[1], 2.6, s[2] || 0); if (!this.followPath(dt)) this.want.set(0, 0, 0); }
           else {
             this.want.set(0, 0, 0);
             this.scan += dt * 0.5;
@@ -376,7 +384,7 @@
             let bestD = null, bd = 1e9;
             for (const dd of doors) { const q = Math.hypot(dd[0] - this.pos.x, dd[1] - this.pos.z); if (q > 1.5 && q < bd) { bd = q; bestD = dd; } }
             const base = bestD ? G.yawOf(bestD[0] - this.pos.x, bestD[1] - this.pos.z) + Math.sin(this.scan) * 0.5 : this.aimYaw;
-            this.lookAt.set(this.pos.x - Math.sin(base) * 5, 1.3, this.pos.z - Math.cos(base) * 5);
+            this.lookAt.set(this.pos.x - Math.sin(base) * 5, this.pos.y + 1.3, this.pos.z - Math.cos(base) * 5);
           }
         }
       }
@@ -453,7 +461,7 @@
       } else if (!isNaN(this.lookAt.x)) {
         tx = this.lookAt.x; ty = this.lookAt.y; tz = this.lookAt.z; k = 4;
       } else if (this.want.lengthSq() > 0.1) {
-        tx = this.pos.x + this.want.x * 3; ty = 1.4; tz = this.pos.z + this.want.z * 3; k = 5;
+        tx = this.pos.x + this.want.x * 3; ty = this.pos.y + 1.4; tz = this.pos.z + this.want.z * 3; k = 5;
       }
       this.flinch = G.damp(this.flinch, 0, 2.5, dt);
       if (tx === undefined) return;
@@ -554,7 +562,14 @@
       if (this.crouch > 0.5) { this.vel.x *= 0.985; this.vel.z *= 0.985; }
       const ox = this.pos.x, oz = this.pos.z;
       this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt;
-      G.W.collide(this.pos, 0.3, 0.36, 1.8);
+      G.W.collide(this.pos, 0.3, this.pos.y + 0.36, this.pos.y + 1.8);
+      // floors and stairs: step up small heights, walk down steps, fall off ledges
+      const gnd = G.W.ground(this.pos.x, this.pos.z, 0.22, this.pos.y + 0.4);
+      if (gnd >= this.pos.y - 0.4 && this.vy >= 0) { this.pos.y = gnd; this.vy = 0; }
+      else {
+        this.vy -= 18 * dt; this.pos.y += this.vy * dt;
+        if (this.pos.y <= gnd) { this.pos.y = gnd; this.vy = 0; }
+      }
       G.Game.pushEntities(this);
       const moved = Math.hypot(this.pos.x - ox, this.pos.z - oz);
       if (dt > 1e-4) {
@@ -589,7 +604,7 @@
         if (this.stepDist > (sp > 3 ? 1.0 : 0.75)) {
           this.stepDist = 0;
           const loud = sp > 3 ? 1 : this.crouch > 0.5 ? 0.3 : 0.6;
-          if (this.pos.distanceTo(G.Audio.lp) < 28) G.Audio.step(this.pos.clone(), G.surfaceAt(this.pos.x, this.pos.z), loud, false);
+          if (this.pos.distanceTo(G.Audio.lp) < 28) G.Audio.step(this.pos.clone(), G.surfaceAt(this.pos.x, this.pos.z, this.pos.y), loud, false);
           G.Game.soundEvent(this.pos, sp > 3 ? 14 : this.crouch > 0.5 ? 2 : 6, this.team, 'step');
         }
       }
@@ -603,7 +618,7 @@
     // ---------------------------------------------------------------- multiplayer puppet (client side)
     netState(a) {
       const n = (v, d) => (Number.isFinite(v) ? v : d);
-      this.netTarget = { x: n(a[1], this.pos.x), z: n(a[2], this.pos.z), vx: n(a[3], 0), vz: n(a[4], 0), yaw: n(a[5], this.aimYaw), pitch: n(a[6], 0), lean: G.clamp(n(a[7], 0), -1, 1), crouch: G.clamp(n(a[8], 0), 0, 1) };
+      this.netTarget = { x: n(a[1], this.pos.x), y: n(a[10], this.pos.y), z: n(a[2], this.pos.z), vx: n(a[3], 0), vz: n(a[4], 0), yaw: n(a[5], this.aimYaw), pitch: n(a[6], 0), lean: G.clamp(n(a[7], 0), -1, 1), crouch: G.clamp(n(a[8], 0), 0, 1) };
       if (this.alive) this.hp = G.clamp(n(a[9], this.hp), 0, 100);
       this.tRecv = G.time;
     }
@@ -622,8 +637,8 @@
       if (t) {
         const age = Math.min(0.25, G.time - (this.tRecv || 0));
         const tx = t.x + t.vx * age, tz = t.z + t.vz * age;
-        if (Math.hypot(tx - this.pos.x, tz - this.pos.z) > 4) { this.pos.x = tx; this.pos.z = tz; }
-        this.pos.x = G.damp(this.pos.x, tx, 14, dt); this.pos.z = G.damp(this.pos.z, tz, 14, dt);
+        if (Math.hypot(tx - this.pos.x, tz - this.pos.z) > 4 || Math.abs(t.y - this.pos.y) > 2.5) { this.pos.x = tx; this.pos.z = tz; this.pos.y = t.y; }
+        this.pos.x = G.damp(this.pos.x, tx, 14, dt); this.pos.z = G.damp(this.pos.z, tz, 14, dt); this.pos.y = G.damp(this.pos.y, t.y, 14, dt);
         this.vel.set(t.vx, 0, t.vz);
         this.aimYaw = G.dampAngle(this.aimYaw, t.yaw, 18, dt);
         this.aimPitch = G.damp(this.aimPitch, t.pitch, 18, dt);
@@ -637,7 +652,7 @@
     }
     roleLogicLook() {
       const s = this.data.spot;
-      if (s) this.lookAt.set(s[2], 1.3, s[3]); else this.lookAt.set(NaN, 0, 0);
+      if (s) this.lookAt.set(s[2], (s[4] || 0) + 1.3, s[3]); else this.lookAt.set(NaN, 0, 0);
     }
   }
   G.Bot = Bot;

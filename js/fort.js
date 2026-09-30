@@ -39,7 +39,7 @@
 
     // reinforceable wall sections: full-height soft wall pieces, cut into ~1.75 m strips
     sectionsOf(p) {
-      if (p.kind !== 'soft' || p.y0 > 0.01 || p.y1 - p.y0 < 2.4 || p.u1 - p.u0 < 0.9) return [];
+      if (p.kind !== 'soft' || p.y1 - p.y0 < 2.4 || p.u1 - p.u0 < 0.9) return [];
       const n = Math.max(1, Math.round((p.u1 - p.u0) / SECTION)), per = p.cols / n, out = [];
       for (let s = 0; s < n; s++) out.push({ k: 'r', p, c0: Math.round(s * per), c1: Math.round((s + 1) * per) - 1 });
       return out;
@@ -57,9 +57,9 @@
     },
     center(t) {
       const p = t.p;
-      if (t.k === 'b') return new V((p.x0 + p.x1) / 2, 1.2, (p.z0 + p.z1) / 2);
+      if (t.k === 'b') return new V((p.x0 + p.x1) / 2, p.y0 + 1.0, (p.z0 + p.z1) / 2);
       const u = p.u0 + ((t.c0 + t.c1 + 1) / 2) * p.cw, c = (p.c0 + p.c1) / 2;
-      return p.axis === 'x' ? new V(u, 1.4, c) : new V(c, 1.4, u);
+      return p.axis === 'x' ? new V(u, p.y0 + 1.4, c) : new V(c, p.y0 + 1.4, u);
     },
 
     // ---------------------------------------------------------------- actions
@@ -137,10 +137,10 @@
       if (Gm.hackerMode || (Gm.mp && !G.Net.isHost)) return;
       const bots = Gm.bots.filter((b) => b.team === 'def' && !b.puppet);
       if (!bots.length) return;
-      const z = G.MAP.zone, cx = (z.x0 + z.x1) / 2, cz = (z.z0 + z.z1) / 2;
+      const z = G.MAP.zone, cx = (z.x0 + z.x1) / 2, cz = (z.z0 + z.z1) / 2, zy = (z.y0 || 0) + 1.4;
       const walls = [];
       for (const p of G.W.panels) for (const s of this.sectionsOf(p)) {
-        const c = this.center(s), d = Math.hypot(c.x - cx, c.z - cz);
+        const c = this.center(s), d = Math.hypot(c.x - cx, c.z - cz) + Math.abs(c.y - zy) * 2.5;
         if (d < 11) walls.push({ s, d: d + Math.random() * 3 });
       }
       walls.sort((a, b) => a.d - b.d);
@@ -150,6 +150,7 @@
         const c = this.center({ k: 'b', p });
         // objective-room doors first, then other doors nearby
         const dz = Math.min(...(G.MAP.zoneDoors || []).map((q) => Math.hypot(c.x - q[0], c.z - q[1])), 99);
+        if (Math.abs(c.y - (zy - 0.4)) > 1.5) continue; // same floor as the objective
         const dc = Math.hypot(c.x - cx, c.z - cz);
         if (dz < 2.6 || dc < 9) doors.push({ p, d: (dz < 2.6 ? dz : 3 + dc) + Math.random() });
       }

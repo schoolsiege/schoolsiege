@@ -181,6 +181,17 @@
         c[0] = 158 * k; c[1] = 114 * k; c[2] = 70 * k;
       }));
     }
+    // ---------------- PAINTED CLAPBOARD SIDING
+    {
+      const n = fbm(256, 4, 8), f = fbm(256, 3, 64);
+      T.siding = toTex(paint(256, (x, y, c, i) => {
+        const b = y % 32;
+        let k = 0.9 + n[i] * 0.07 + f[i] * 0.05;
+        if (b > 26) k *= 0.6 + (31 - b) * 0.05; // shadow under each lapped board
+        else if (b < 2) k *= 1.05;
+        c[0] = 232 * k; c[1] = 224 * k; c[2] = 204 * k;
+      }));
+    }
     // ---------------- GRASS / DIRT
     {
       const n = fbm(256, 5, 4), f = fbm(256, 3, 8);
@@ -591,6 +602,8 @@
     // new-map materials
     M.snow = std({ map: T.snow, roughness: 0.9 }, 5, 'dirt');
     M.logs = std({ map: T.logs, roughness: 0.85 }, 2.4, 'wood');
+    M.siding = std({ map: T.siding, roughness: 0.85 }, 1.3, 'wood');
+    M.sidingDark = std({ map: T.plank, color: 0x8a6f52, roughness: 0.85 }, 1.3, 'wood');
     M.woodCeiling = std({ map: T.woodLight, color: 0xd8c0a0, roughness: 0.7 }, 1.6, 'wood');
     M.corrugated = std({ map: T.corrugated, roughness: 0.55, metalness: 0.45 }, 2, 'metal');
     const cont = (col) => std({ map: T.container, color: col, roughness: 0.6, metalness: 0.3 }, 2.6, 'metal');
