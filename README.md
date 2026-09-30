@@ -45,9 +45,10 @@ Use Node and Three.js **0.149.0**:
 ```sh
 node tests/map-switch.mjs /path/to/three/build/three.module.js
 node tests/gameplay.mjs /path/to/three/build/three.module.js
+node tests/fortify.mjs /path/to/three/build/three.module.js
 ```
 
-These run production geometry, collision, navigation and game logic with real Three.js. DOM, audio output and GPU rendering are stubbed. They check map switching, the chalet roof slope, recon, device damage and bot accuracy, abilities, barricades, touch input mappings, mode isolation and match progression. They do not replace visual browser or physical-phone testing.
+These run production geometry, collision, navigation and game logic with real Three.js. DOM, audio output and GPU rendering are stubbed. They check map switching, the chalet roof slope, recon, device damage and bot accuracy, abilities, barricades, touch input mappings, mode isolation and match progression. `fortify.mjs` covers reinforcement, door barricades, 1v1 side swaps, scopes and the final kill cam. They do not replace visual browser or physical-phone testing.
 
 ## Controller
 
@@ -62,6 +63,7 @@ Any standard Xbox, PlayStation or USB/Bluetooth pad works. Press any button to s
 | Right stick click (not aiming) | Melee |
 | RB / LB | Ability / grenade |
 | A / B / X / Y | Jump-vault / crouch / reload / swap weapon (Y starts the action phase during prep) |
+| Hold X (defending, looking at a wall or doorway) | Reinforce wall / barricade door (tap X still reloads) |
 | D-pad up / down | Cameras / drone (left-right switches camera, B exits) |
 | Start / View | Pause / scoreboard |
 
@@ -69,7 +71,19 @@ Controller look sensitivity is in the main menu settings.
 
 ## 1v1 Duel
 
-Pick **1V1 DUEL** on the main menu to fight a single defender bot. First to 5 rounds.
+Pick **1V1 DUEL** on the main menu to fight a single bot. First to 5 rounds. Sides switch every 2 rounds (attack rounds 1–2, defend 3–4, and so on); round wins follow the players, not the side. Online 1v1 swaps the same way.
+
+## Fortifying (defense)
+
+When you defend, you can walk around during the preparation phase (30 s single-player, 15 s online) and fortify:
+
+- **Reinforce walls:** look at a full-height soft wall and hold **T** (controller: hold **X**, touch: hold **FORTIFY**). Steel plating covers a ~1.75 m strip; it stops bullets, melee, the breaching hammer, breaching rounds and grenades.
+- **Barricade doors:** look at an open interior doorway and hold the same button. The barricade breaks like any other (3 melee hits or about 6 rifle rounds).
+- Each defender gets 8 reinforcements and 4 barricades in 1v1 (2 and 2 each on a full team). Defender bots fortify the walls and doors around the objective during prep. Everything resets each round.
+
+## Sights
+
+Pick **RED DOT / HOLO · 1X** or **1.5X SCOPE** under **SIGHT** on the main menu. The 1.5x scope zooms 1.5 times further than the standard sight when aiming, and fits the rifle, SMG and shotgun (the sidearm keeps its iron sights).
 
 ## Online multiplayer
 
@@ -89,4 +103,4 @@ Teammates have a blue outline and a name tag that stays visible through walls (w
 
 ## Kill cam
 
-After you are killed, a short replay plays from your killer's eyes (with their shots, weapon and remaining health). Click, press Space or controller A (or tap FIRE) to skip. Toggle it under **Settings → Kill cam**.
+After you are killed, a short replay plays from your killer's eyes, showing their gun and sight in view (aimed down sights when they were aiming), their shots, weapon and remaining health. When a round ends on a kill, everyone sees a **FINAL KILL** replay of it. Click, press Space or controller A (or tap FIRE) to skip. Toggle it under **Settings → Kill cam**.

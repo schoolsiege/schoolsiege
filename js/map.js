@@ -88,10 +88,14 @@
     if (axis === 'x') box(mat, u0, y0, c0, u1, y1, c1, o);
     else box(mat, c0, y0, u0, c1, y1, u1, o);
   }
-  function barricade(axis, c, o) {
+  // Doorways get an optional barricade that defenders put up during prep. Interior doors always start
+  // open (defenders choose which to barricade); exterior walls keep their fixed barricades.
+  const doorLike = (o) => o.y0 === 0 && o.w <= 1.8 && o.y1 <= 2.6;
+  function barricade(axis, c, o, opt) {
     const o0 = o.at - o.w / 2, o1 = o.at + o.w / 2;
     // A visible floor gap lets the small recon drone pass under door barricades.
-    G.W.addPanel({ axis, u0: o0 + 0.01, u1: o1 - 0.01, y0: o.y0 > 0 ? o.y0 + 0.02 : 0.22, y1: o.y1 - 0.02, c0: c - 0.035, c1: c + 0.035, kind: 'barricade', cw: 0.34, ch: 0.26 });
+    const p = G.W.addPanel({ axis, u0: o0 + 0.01, u1: o1 - 0.01, y0: o.y0 > 0 ? o.y0 + 0.02 : 0.22, y1: o.y1 - 0.02, c0: c - 0.035, c1: c + 0.035, kind: 'barricade', cw: 0.34, ch: 0.26 });
+    if (opt) p.optional = true;
   }
   function softWall(axis, c, a, b, ops, tint, t) {
     t = t || 0.16;
@@ -99,7 +103,7 @@
     for (const p of pieces(a, b, H, ops)) {
       G.W.addPanel({ axis, u0: p.u0, u1: p.u1, y0: p.y0, y1: p.y1, c0: c - t / 2, c1: c + t / 2, kind: 'soft', cw: 0.25, ch: 0.25, tint });
     }
-    for (const o of ops) if (o.bar) barricade(axis, c, o);
+    for (const o of ops) if (doorLike(o)) barricade(axis, c, o, true); else if (o.bar) barricade(axis, c, o);
   }
   // static wall made of layers [{mat, o0, o1, h}] (offsets along c)
   function staticWall(axis, c, a, b, ops, layers) {
@@ -119,7 +123,7 @@
       } else {
         boxAlong('concrete', axis, o0, o1, 0, 0.025, cMin, cMax, { solid: false });
       }
-      if (o.bar) barricade(axis, c, o);
+      if (o.bar) barricade(axis, c, o); else if (doorLike(o)) barricade(axis, c, o, true);
     }
   }
   const DOOR = (at, w, bar) => ({ at, w: w || 1.3, y0: 0, y1: 2.3, bar: !!bar });

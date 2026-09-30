@@ -22,6 +22,7 @@
       this.stamp = 1;
       this._pc = -1;
       this._pn = [0, 0, 0];
+      if (G.Fort) G.Fort.reset();
     },
 
     insert(s) {
@@ -124,10 +125,39 @@
         scene.add(mesh);
         this.meshes[kind] = mesh;
       }
+      for (const p of this.panels) if (p.optional) this.unplace(p);
+    },
+
+    // ---------- optional door barricades (placed by defenders) and cell repair
+    copyBase(p, ci) {
+      const m = p.mesh, idx = p.inst + ci;
+      m.instanceMatrix.array.set(m.userData.baseM.subarray(idx * 16, idx * 16 + 16), idx * 16);
+      m.instanceColor.array.set(m.userData.baseC.subarray(idx * 3, idx * 3 + 3), idx * 3);
+      m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true;
+    },
+    restoreCell(p, ci) {
+      if (p.cells[ci]) return;
+      p.cells[ci] = 1; p.hp[ci] = p.maxHp;
+      this.copyBase(p, ci);
+      const b = this.cellBox(p, ci, [0, 0, 0, 0, 0, 0]);
+      if (G.Nav) G.Nav.dirty(b[0], b[2], b[3], b[5]);
+    },
+    unplace(p) {
+      p.placed = false; p.alive = false; p.cells.fill(0);
+      const arr = p.mesh.instanceMatrix.array;
+      arr.fill(0, p.inst * 16, (p.inst + p.cells.length) * 16);
+      p.mesh.instanceMatrix.needsUpdate = true;
+    },
+    placeOptional(p) {
+      p.placed = true; p.alive = true; p.broken = false; p.integ = 100;
+      p.cells.fill(1); p.hp.fill(p.maxHp);
+      for (let ci = 0; ci < p.cells.length; ci++) this.copyBase(p, ci);
+      if (G.Nav) G.Nav.dirty(p.x0, p.z0, p.x1, p.z1);
+      if (G.Perf) G.Perf.shadowDirty = true;
     },
 
     resetPanels() {
-      for (const p of this.panels) { p.cells.fill(1); p.hp.fill(p.maxHp); p.integ = 100; p.broken = false; }
+      for (const p of this.panels) { p.cells.fill(1); p.hp.fill(p.maxHp); p.integ = 100; p.broken = false; if (p.rf) p.rf.fill(0); }
       for (const k in this.meshes) {
         const m = this.meshes[k];
         m.instanceMatrix.array.set(m.userData.baseM);
@@ -135,6 +165,8 @@
         m.instanceMatrix.needsUpdate = true;
         m.instanceColor.needsUpdate = true;
       }
+      for (const p of this.panels) if (p.optional) this.unplace(p);
+      if (G.Fort) G.Fort.reset();
     },
 
     // ---------- raycast
@@ -321,7 +353,7 @@
 
     // ---------- destruction
     damageCell(p, ci, dmg, dx, dy, dz) {
-      if (!p.cells[ci]) return;
+      if (!p.cells[ci] || (p.rf && p.rf[ci])) return; // reinforced: steel plating
       p.hp[ci] -= dmg;
       if (p.hp[ci] <= 0) { this.destroyCell(p, ci, dx, dy, dz, true); return; }
       // darken damaged cells
@@ -369,6 +401,7 @@
       this.query(cx - rad, cz - rad, cx + rad, cz + rad, (s) => {
         if (s.type !== 1 || (kinds && kinds.indexOf(s.kind) < 0)) return;
         this.panelCells(s, cx - rad, cy - rad, cz - rad, cx + rad, cy + rad, cz + rad, (a, b, c, d, e, f, ci) => {
+          if (s.rf && s.rf[ci]) return;
           const mx = (a + d) / 2 - cx, my = (b + e) / 2 - cy, mz = (c + f) / 2 - cz;
           const dist = Math.sqrt(mx * mx + my * my + mz * mz);
           if (dist < rad * (0.85 + Math.random() * 0.3)) { touched.push([s, ci]); }

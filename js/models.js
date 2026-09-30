@@ -6,7 +6,7 @@
 
   // ---------------------------------------------------------------- WEAPONS
   // Local space: forward = -Z, origin at rear of receiver.
-  G.buildGun = function (kind, vm) {
+  G.buildGun = function (kind, vm, sight) {
     const M = G.M, P = new G.Parts();
     const group = new THREE.Group();
     const out = { group, kind, mag: null, pump: null, muzzle: new THREE.Object3D() };
@@ -30,6 +30,36 @@
       }
       out.sight = { y, z: z - 0.034 };
     };
+    // compact 1.5x scope: short tube, wider objective bell, red chevron reticle
+    const scope15 = (y, z) => {
+      B(M.gunDark, 0, y - 0.034, z, 0.028, 0.02, 0.08);
+      B(M.gunDark, 0, y - 0.022, z + 0.022, 0.018, 0.02, 0.012);
+      B(M.gunDark, 0, y - 0.022, z - 0.022, 0.018, 0.02, 0.012);
+      P.add(G.geo.cylOpen, M.sightTube, 0, y, z + 0.008, Math.PI / 2, 0, 0, 0.019, 0.1, 0.019);
+      P.add(G.geo.cylOpen, M.sightTube, 0, y, z - 0.05, Math.PI / 2, 0, 0, 0.025, 0.036, 0.025);
+      P.add(G.geo.torus, M.sightTube, 0, y, z + 0.058, 0, 0, 0, 0.02, 0.02, 0.03);
+      P.add(G.geo.torus, M.sightTube, 0, y, z - 0.068, 0, 0, 0, 0.0255, 0.0255, 0.03);
+      P.add(G.geo.torus, M.gunDark, 0, y, z - 0.03, 0, 0, 0, 0.0215, 0.0215, 0.06);
+      P.cyl(M.sightTube, 0, y + 0.021, z, 0.008, 0.012);
+      P.cyl(M.sightTube, 0.021, y, z, 0.008, 0.012, 'x');
+      if (vm) {
+        const lens = new THREE.Mesh(G.geo.circle, M.sightGlass);
+        lens.scale.setScalar(0.024); lens.position.set(0, y, z - 0.064);
+        group.add(lens);
+        const red = (sx, sy, x, yy, rz) => {
+          const m = new THREE.Mesh(G.geo.plane, M.redDot);
+          m.scale.set(sx, sy, 1); m.position.set(x, yy, z - 0.066); m.rotation.z = rz || 0; m.renderOrder = 10;
+          group.add(m);
+        };
+        // chevron + thin horizontal stadia
+        red(0.0045, 0.0007, -0.0015, y - 0.0013, 0.8); red(0.0045, 0.0007, 0.0015, y - 0.0013, -0.8);
+        red(0.009, 0.00045, -0.012, y, 0); red(0.009, 0.00045, 0.012, y, 0);
+        red(0.00045, 0.008, 0, y - 0.009, 0);
+      }
+      out.sight = { y, z: z - 0.066 };
+    };
+    const scoped = sight === '1.5' && kind !== 'pistol';
+    const optic = (y, z) => (scoped ? scope15(y, z) : redDot(y, z));
 
     if (kind === 'rifle') {
       B(M.gunMetal, 0, -0.005, -0.12, 0.048, 0.06, 0.22);
@@ -53,7 +83,7 @@
       B(M.gunDark, 0.028, 0.045, -0.13, 0.002, 0.022, 0.06);
       P.cyl(M.gunPoly, 0, -0.012, -0.46, 0.015, 0.075);
       P.cyl(M.gunDark, 0.046, 0.04, -0.5, 0.012, 0.09, 'z');
-      redDot(0.13, -0.12);
+      optic(0.13, -0.12);
       // magazine
       const mag = new THREE.Group(); mag.position.set(0, -0.06, -0.19);
       const mp = new G.Parts();
@@ -80,6 +110,7 @@
       B(M.gunDark, 0.027, 0.04, -0.12, 0.002, 0.02, 0.05);
       // holo sight
       const y = 0.113, z = -0.12;
+      if (scoped) scope15(0.118, z); else {
       B(M.gunDark, 0, 0.085, z, 0.036, 0.018, 0.08);
       B(M.sightTube, 0.021, y, z, 0.004, 0.042, 0.07);
       B(M.sightTube, -0.021, y, z, 0.004, 0.042, 0.07);
@@ -93,6 +124,7 @@
         dot.scale.setScalar(0.0008); dot.position.set(0, y, z - 0.032); dot.renderOrder = 10; group.add(dot);
       }
       out.sight = { y, z: z - 0.032 };
+      }
       const mag = new THREE.Group(); mag.position.set(0, -0.025, -0.2);
       const mp = new G.Parts();
       mp.box(M.gunPoly, 0, -0.095, 0, 0.028, 0.19, 0.042, 0.05);
@@ -113,7 +145,7 @@
       B(M.gunPoly, -0.03, 0.02, -0.1, 0.008, 0.05, 0.12);
       for (let i = 0; i < 4; i++) P.cyl(M.shell, -0.037, 0.02, -0.14 + i * 0.026, 0.009, 0.05);
       B(M.gunPoly, 0, 0.066, -0.1, 0.028, 0.01, 0.2);
-      redDot(0.105, -0.08);
+      optic(0.105, -0.08);
       const pump = new THREE.Group(); pump.position.set(0, 0.017, -0.36);
       const pp = new G.Parts();
       pp.cyl(M.gunPoly, 0, 0, 0, 0.025, 0.16, 'z');
@@ -187,7 +219,7 @@
   };
 
   // ---------------------------------------------------------------- OPERATORS
-  G.buildCharacter = function (team, gunKind) {
+  G.buildCharacter = function (team, gunKind, sight) {
     const M = G.M, isAtk = team === 'atk';
     const uni = isAtk ? M.uniAtk : M.uniDef, vest = isAtk ? M.vestAtk : M.vestDef;
     const skin = G.pick([M.skin1, M.skin2, M.skin3]);
@@ -262,7 +294,7 @@
     head.add(P.build());
 
     const aim = new THREE.Group(); aim.position.y = 0.5; spine.add(aim);
-    const gun = G.buildGun(gunKind, false);
+    const gun = G.buildGun(gunKind, false, sight);
     const go = new V(0.1, -0.07, -0.1);
     gun.group.position.copy(go);
     aim.add(gun.group);

@@ -32,8 +32,9 @@
   });
   addEventListener('wheel', (e) => { I.wheel = Math.sign(e.deltaY); }, { passive: true });
 
-  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0, padSens: 1.0, renderScale: 0, teamHL: true, killcam: true, mpName: '', mpMode: 'team', mpBots: true, mpPub: true };
+  const DEF_SETTINGS = { sens: 1.0, adsSens: 0.8, fov: 80, vol: 0.8, leanMode: 'hold', gfx: 'high', diff: 'regular', primary: 'ar', scope: 'std', map: 'harbor', mode: 'secure', operator: 'sledge', ff: false, controls: 'auto', touchSens: 1.0, padSens: 1.0, renderScale: 0, teamHL: true, killcam: true, mpName: '', mpMode: 'team', mpBots: true, mpPub: true };
   const PLAY_STATES = ['live', 'prep', 'roundEnd'];
+  G.DUEL_SWAP = 2; // 1v1: sides switch every 2 rounds
 
   // ------------------------------------------------------------- GAME
   const Game = (G.Game = {
@@ -108,6 +109,7 @@
       G.T.build();
       G.buildMaterials();
       G.FX.init(scene);
+      G.Fort.init(scene);
       G.Perf.afterInit(r, sun, scene);
       G.buildMap(scene, this.settings.map);
       G.Perf.afterMap();
@@ -167,6 +169,7 @@
         });
       };
       group('wChoices', 'w', 'primary');
+      group('scopeChoices', 's', 'scope');
       group('dChoices', 'd', 'diff');
       group('mapChoices', 'map', 'map', () => this.selectMap(S.map));
       group('modeChoices', 'mode', 'mode', () => G.Mods.buildUI());
@@ -302,6 +305,7 @@
       document.body.classList.remove('mp');
       G.Touch.show(false);
       G.Highlight.clear();
+      G.Fort.hideUI();
       for (const b of this.bots) b.model.root.visible = false;
       this.player.model.root.visible = false;
     },
@@ -324,9 +328,11 @@
           new G.Bot('atk', 'RAVEN', 'ar'), new G.Bot('atk', 'DUNE', 'smg'),
           new G.Bot('def', 'BASTION', 'ar'), new G.Bot('def', 'KESTREL', 'smg'), new G.Bot('def', 'HOLLOW', 'sg'), new G.Bot('def', 'MARROW', 'smg'),
         ];
-        this.botPool.forEach((b, i) => { b.nid = 'b' + i; });
+        this.botPool.forEach((b, i) => { b.nid = 'b' + i; b.baseName = b.name; });
       }
-      // 1v1 duel: you against a single defender
+      for (const b of this.botPool) b.name = b.baseName;
+      this.setPlayerTeam('atk');
+      // 1v1 duel: you against a single bot; sides switch every few rounds
       this.bots = S.mode === 'duel' ? [this.botPool[2]] : this.botPool;
       for (const b of this.botPool) b.model.root.visible = this.bots.includes(b);
       this.winTarget = S.mode === 'duel' ? 5 : 3;
@@ -347,13 +353,21 @@
       const S = this.settings, MAP = G.MAP;
       this.round++;
       this.resetRoundWorld();
-      if (this.activeMode === 'duel') this.timer = 120;
+      let swapped = false;
+      if (this.activeMode === 'duel') {
+        this.timer = 120;
+        const side = Math.floor((this.round - 1) / G.DUEL_SWAP) % 2 === 0 ? 'atk' : 'def';
+        if (side !== this.player.team) { this.setDuelSide(side); swapped = true; }
+      }
       // attackers
       const sp = G.pick(MAP.spawns);
       this.spawnName = sp.name;
       const ry = sp.yaw;
       const rx = Math.cos(ry), rz = -Math.sin(ry);
-      this.player.spawn(sp.x, sp.z, ry, S.primary);
+      if (this.player.team === 'def') {
+        const a = G.pick(MAP.anchors);
+        this.player.spawn(a[0], a[1], G.yawOf(a[2] - a[0], a[3] - a[1]), S.primary);
+      } else this.player.spawn(sp.x, sp.z, ry, S.primary);
       const ents = MAP.entries.slice().sort((a, b) => Math.hypot(a.out[0] - sp.x, a.out[1] - sp.z) - Math.hypot(b.out[0] - sp.x, b.out[1] - sp.z));
       const secure = MAP.secure.slice().sort(() => Math.random() - 0.5);
       const atkBots = this.bots.filter((b) => b.team === 'atk');
@@ -382,12 +396,42 @@
       }
       this.state = 'prep'; this.prepT = 30;
       document.body.classList.add('prep');
-      G.Operators.reset(); G.Recon.reset(); G.Recon.enter('drone');
+      G.Operators.reset(); G.Recon.reset();
+      G.Fort.startRound();
+      const defending = this.player.team === 'def' && !this.hackerMode;
+      if (!defending) G.Recon.enter('drone');
       this.buildIcons();
-      this.big('DRONING PHASE', 'Scout for 30s · ENTER / START to begin early', 'atk');
-      $('roundLabel').textContent = 'DRONE PHASE';
+      if (defending) this.big(swapped ? 'SIDES SWAPPED · DEFEND' : 'PREPARATION PHASE', `${this.fortHint()} to reinforce walls & barricade doors · ENTER / START to begin early`, 'def');
+      else this.big(swapped ? 'SIDES SWAPPED · ATTACK' : 'DRONING PHASE', 'Scout for 30s · ENTER / START to begin early', 'atk');
+      $('roundLabel').textContent = defending ? 'PREP PHASE' : 'DRONE PHASE';
       $('spectate').textContent = '';
       G.Audio.beep(660, 0.12);
+    },
+
+    fortHint() { return G.Pad && G.Pad.active ? 'Hold X' : G.Touch.enabled ? 'Hold FORTIFY' : 'Hold T'; },
+    setPlayerTeam(team) {
+      const p = this.player;
+      p.team = team;
+      if (p.modelTeam !== team) {
+        p.model.root.removeFromParent();
+        p.model = G.buildCharacter(team, 'rifle', this.settings.scope);
+        p.model.root.visible = false;
+        G.scene.add(p.model.root);
+        p.modelTeam = team;
+      }
+    },
+    // 1v1 side switch: you change teams, the opponent (same name and stats) takes the other side
+    setDuelSide(side) {
+      const old = this.bots[0], nb = this.botPool[side === 'atk' ? 2 : 0];
+      if (old && old !== nb) {
+        nb.name = old.name; nb.kills = old.kills; nb.deaths = old.deaths;
+        old.model.root.visible = false; old.alive = false;
+      }
+      this.setPlayerTeam(side);
+      this.bots = [nb];
+      this.entities = [this.player, nb];
+      // round wins follow the people, not the side
+      this.score = { atk: this.score.def, def: this.score.atk };
     },
 
     resetRoundWorld() {
@@ -434,14 +478,20 @@
       this.resetRoundWorld();
       if (this.activeMode === 'duel') this.timer = 120;
       this.spawnName = spawnName;
-      this.state = 'prep'; this.prepT = 5;
+      this.state = 'prep'; this.prepT = 15;
+      document.body.classList.add('prep');
       $('roundLabel').textContent = `ROUND ${this.round}`;
       $('spectate').textContent = '';
-      const side = this.player.team === 'atk' ? 'ATTACK' : 'DEFEND';
-      this.big(`ROUND ${this.round}`, `${side} · ${this.activeMode === 'duel' ? '1V1 DUEL' : 'TEAM'} · ${spawnName.toUpperCase()}`, this.player.team);
+    },
+    netRoundBanner(swapped) {
+      const def = this.player.team === 'def';
+      const title = swapped ? `SIDES SWAPPED · ${def ? 'DEFEND' : 'ATTACK'}` : `ROUND ${this.round}`;
+      const sub = def ? `${this.fortHint()} to reinforce walls & barricade doors` : `${this.activeMode === 'duel' ? '1V1 DUEL' : 'TEAM'} · ${String(this.spawnName || '').toUpperCase()} · Defenders are fortifying`;
+      this.big(title, sub, this.player.team);
     },
     netRoundEnd(winner, reason) {
       this.state = 'roundEnd'; this.endT = 99;
+      G.KillCam.roundEnded();
       const won = winner === this.player.team;
       this.big(won ? 'ROUND WON' : 'ROUND LOST', reason, won ? 'atk' : 'def');
       G.Audio.sting(won);
@@ -452,6 +502,7 @@
       if (this.state !== 'live') return;
       this.state = 'roundEnd'; this.endT = 5;
       G.Recon.exit();
+      if (G.KillCam.roundEnded()) this.endT = 6.8; // everyone watches the final kill
       this.score[winner]++;
       const won = winner === this.player.team;
       this.big(won ? 'ROUND WON' : 'ROUND LOST', reason, won ? 'atk' : 'def');
@@ -473,6 +524,7 @@
       this.score.atk = this.player.wins;
       this.score.def = Math.max(...this.bots.map((b) => b.wins));
       this.state = 'roundEnd'; this.endT = 5; G.Recon.exit();
+      if (G.KillCam.roundEnded()) this.endT = 6.8;
       this.big(winner ? `${winner.name} WINS` : 'DRAW', winner ? `${winner.wins} / 3 ROUND WINS` : 'No survivors', winner === this.player ? 'atk' : 'def');
       this.buildIcons();
     },
@@ -494,6 +546,7 @@
     },
     onKill(killer, victim, head, fromNet) {
       if (this.mp && !fromNet) G.Net.onLocalKill(killer, victim, head);
+      G.KillCam.noteKill(killer, victim, head);
       const tk = !!(killer && killer !== victim && !this.isEnemy(killer, victim));
       if (killer && killer !== victim) killer.kills += tk ? -1 : 1;
       const kname = killer ? killer.name : '';
@@ -613,6 +666,7 @@
       if (!this.mp) G.Recon.update(dt);
       p.update(dt);
       G.Operators.update(dt);
+      G.Fort.update(dt);
       for (const b of this.bots) b.update(dt);
       if (this.mp) G.Net.update(dt);
       G.Grenades.update(dt);
@@ -662,7 +716,8 @@
       if (document.pointerLockElement) document.exitPointerLock();
       G.Touch.show(false);
       document.body.classList.remove('playing');
-      const won = this.score.atk > this.score.def;
+      const other = this.player.team === 'def' ? 'atk' : 'def';
+      const won = this.score[this.player.team] > this.score[other];
       const champion = this.hackerMode ? this.entities.find((e) => e.wins >= 3) : null;
       $('matchResult').textContent = champion ? `${champion.name} WINS` : won ? 'VICTORY' : 'DEFEAT';
       $('matchResult').style.color = won ? 'var(--atk)' : 'var(--def)';
@@ -699,9 +754,9 @@
         for (const b of this.bots) b.model.root.visible = true;
         if (this.mp) for (const e of this.entities) if (e.isRemotePlayer) e.model.root.visible = true;
         p.model.root.visible = !p.alive || !!G.Recon.active;
-        if (p.alive && G.Recon.applyView(cam)) { /* remote view; body stays in the world */ }
+        if (G.KillCam.apply(cam, dt)) { showVM = true; /* replay from the killer's eyes, with their gun */ }
+        else if (p.alive && G.Recon.applyView(cam)) { /* remote view; body stays in the world */ }
         else if (p.alive) { p.updateView(cam, dt); showVM = true; }
-        else if (G.KillCam.apply(cam, dt)) { /* replay from the killer's eyes */ }
         else if (this.deathT > 2.5) {
           if (!this.spec || !this.spec.alive) this.nextSpec();
           if (this.spec) {

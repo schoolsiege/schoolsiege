@@ -10,7 +10,7 @@
   const V = THREE.Vector3;
   const $ = (id) => document.getElementById(id);
 
-  const VERSION = 'bp-mp-2';
+  const VERSION = 'bp-mp-3';
   const TOPIC = 'breachpoint-fps/v2/';
   // tried in order; everyone normally lands on the first one
   const BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081'];
@@ -25,6 +25,7 @@
   const cleanName = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9 _-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14) || 'OPERATOR';
   const cleanChat = (s) => String(s || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120);
   const validW = (w) => (WEAPON_KEYS.includes(w) ? w : 'ar');
+  const validSc = (s) => (s === '1.5' ? '1.5' : 'std');
   const validOp = (o) => (G.Operators && G.Operators.roster[o] ? o : 'sledge');
   const maxPlayers = (L) => (L.mode === 'duel' ? 2 : 10);
   const randCode = () => Array.from({ length: 5 }, () => CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0]).join('');
@@ -111,8 +112,8 @@
   // ================================================================ REMOTE PLAYER
   // Another human in the match, animated from their network updates.
   class RemotePlayer {
-    constructor(nid, name, team, wkey, op) {
-      this.nid = nid; this.name = name; this.team = team; this.opId = op;
+    constructor(nid, name, team, wkey, op, scope) {
+      this.nid = nid; this.name = name; this.team = team; this.opId = op; this.scope = validSc(scope); this.ads = 0;
       this.remote = true; this.isRemotePlayer = true;
       this.def = G.WEAPONS[wkey] || G.WEAPONS.ar;
       this.pos = new V(); this.vel = new V(); this.yaw = 0; this.pitch = 0; this.lean = 0; this.crouch = 0;
@@ -121,7 +122,16 @@
       this.fallDir = new V(); this.deadT = 0;
       this.tgt = { x: 0, y: 0, z: 0, vx: 0, vz: 0, yaw: 0, pitch: 0, lean: 0, crouch: 0 };
       this.tRecv = 0; this.last = null;
-      this.model = G.buildCharacter(team, this.def.model);
+      this.model = G.buildCharacter(team, this.def.model, this.scope);
+      G.scene.add(this.model.root);
+    }
+    setTeam(team) {
+      if (team === this.team) return;
+      this.team = team;
+      const vis = this.model.root.visible;
+      this.model.root.removeFromParent();
+      this.model = G.buildCharacter(team, this.def.model, this.scope);
+      this.model.root.visible = vis;
       G.scene.add(this.model.root);
     }
     get aimYaw() { return this.yaw; }
@@ -138,6 +148,7 @@
       const t = this.tgt;
       t.x = num(a[1], t.x); t.y = num(a[2], t.y); t.z = num(a[3], t.z); t.vx = num(a[4]); t.vz = num(a[5]);
       t.yaw = num(a[6], t.yaw); t.pitch = num(a[7]); t.lean = G.clamp(num(a[8]), -1, 1); t.crouch = G.clamp(num(a[9]), 0, 1);
+      this.ads = G.clamp(num(a[12]), 0, 1);
       if (this.alive) this.hp = G.clamp(num(a[10], this.hp), 0, 100);
       if (G.WEAPONS[a[11]]) this.def = G.WEAPONS[a[11]];
       this.tRecv = G.time; this.last = a;
@@ -323,7 +334,7 @@
       this.lobby = {
         code, name: `${this.myName()}'S LOBBY`, mode: S.mpMode === 'duel' ? 'duel' : 'team', map: S.map,
         bots: S.mpBots !== false, ff: !!S.ff, pub: S.mpPub !== false, started: false,
-        players: [{ nid: 'u0', name: this.myName(), team: 'atk', w: validW(S.primary), op: validOp(S.operator) }],
+        players: [{ nid: 'u0', name: this.myName(), team: 'atk', w: validW(S.primary), op: validOp(S.operator), sc: validSc(S.scope) }],
       };
       Bus.sub(rb, this.roomTopic(code, 'h'), (d) => this.onHostInbox(d));
       this.startHeartbeat();
@@ -373,7 +384,7 @@
       while (L.players.some((p) => p.name === name)) name = cleanName(name.slice(0, 11) + ((Math.random() * 90 + 10) | 0));
       const nid = 'u' + this.nextNid++;
       const atk = L.players.filter((p) => p.team === 'atk').length, def = L.players.length - atk;
-      L.players.push({ nid, name, team: atk <= def ? 'atk' : 'def', w: validW(d.w), op: validOp(d.op) });
+      L.players.push({ nid, name, team: atk <= def ? 'atk' : 'def', w: validW(d.w), op: validOp(d.op), sc: validSc(d.sc) });
       if (L.mode === 'duel') this.balanceDuel();
       c.nid = nid; this.conns.set(nid, c);
       c.send({ t: 'welcome', nid, hid: Bus.id, chat: this.chatLog.slice(-20) });
@@ -448,7 +459,7 @@
           d.id = nid;
           this.handle(d); this.broadcast(d, c);
           break;
-        case 'cells': case 'bar':
+        case 'cells': case 'bar': case 'fort':
           this.handle(d); this.broadcast(d, c);
           break;
         case 'bye': this.dropClient(c); break;
@@ -479,7 +490,7 @@
       await sleep(250); // let the subscriptions settle before saying hello
       const S = this.settings();
       for (let i = 0; i < 3 && !this.myNid && !this.joinDenied; i++) {
-        this.hostConn.send({ t: 'hello', v: VERSION, name: this.myName(), w: validW(S.primary), op: validOp(S.operator) });
+        this.hostConn.send({ t: 'hello', v: VERSION, name: this.myName(), w: validW(S.primary), op: validOp(S.operator), sc: validSc(S.scope) });
         for (let k = 0; k < 20 && !this.myNid && !this.joinDenied; k++) await sleep(100);
       }
       if (this.myNid) return true;
@@ -681,7 +692,7 @@
       p.nid = this.myNid;
       this.setPlayerTeam(mine.team === 'def' ? 'def' : 'atk');
       // other humans
-      this.remotes = players.filter((x) => x.nid !== this.myNid).map((x) => new RemotePlayer(String(x.nid), cleanName(x.name), x.team === 'def' ? 'def' : 'atk', validW(x.w), validOp(x.op)));
+      this.remotes = players.filter((x) => x.nid !== this.myNid).map((x) => new RemotePlayer(String(x.nid), cleanName(x.name), x.team === 'def' ? 'def' : 'atk', validW(x.w), validOp(x.op), x.sc));
       // bots: real on the host, puppets on clients
       this.netBots = (Array.isArray(cfg.bots) ? cfg.bots : []).map((b) => {
         const bot = new G.Bot(b.team === 'def' ? 'def' : 'atk', cleanName(b.name), validW(b.w));
@@ -694,17 +705,7 @@
       Gm.beginNetMatch(this.netBots, this.remotes, this.mode);
       if (this.isHost) this.hostStartRound();
     },
-    setPlayerTeam(team) {
-      const p = G.Game.player;
-      p.team = team;
-      if (p.modelTeam !== team) {
-        p.model.root.removeFromParent();
-        p.model = G.buildCharacter(team, 'rifle');
-        p.model.root.visible = false;
-        G.scene.add(p.model.root);
-        p.modelTeam = team;
-      }
-    },
+    setPlayerTeam(team) { G.Game.setPlayerTeam(team); },
     removeEntity(nid) {
       const Gm = G.Game, e = this.byNid(nid);
       if (!e || e === Gm.player) return;
@@ -739,8 +740,16 @@
     // ---------------------------------------------------------------- rounds (host decides, everyone applies)
     hostStartRound() {
       const Gm = G.Game, MAP = G.MAP;
-      const ents = Gm.entities;
-      const atk = ents.filter((e) => e.team === 'atk'), def = ents.filter((e) => e.team === 'def');
+      const ents = Gm.entities, n = Gm.round + 1;
+      // 1v1: switch sides every few rounds; round wins follow the players
+      let T = null, sc = Gm.score;
+      if (this.mode === 'duel' && n > 1 && (n - 1) % G.DUEL_SWAP === 0) {
+        T = {};
+        for (const e of ents) T[e.nid] = e.team === 'atk' ? 'def' : 'atk';
+        sc = { atk: Gm.score.def, def: Gm.score.atk };
+      }
+      const teamOf = (e) => (T ? T[e.nid] : e.team);
+      const atk = ents.filter((e) => teamOf(e) === 'atk'), def = ents.filter((e) => teamOf(e) === 'def');
       const sp = G.pick(MAP.spawns);
       const rx = Math.cos(sp.yaw), rz = -Math.sin(sp.yaw), bx = Math.sin(sp.yaw), bz = Math.cos(sp.yaw);
       const A = {};
@@ -755,7 +764,8 @@
         const s = spots[i % spots.length];
         A[e.nid] = [s[0], s[1], r2(G.yawOf(s[2] - s[0], s[3] - s[1])), i];
       });
-      const msg = { t: 'round', n: Gm.round + 1, sp: sp.name, A };
+      const msg = { t: 'round', n, sp: sp.name, A, sc };
+      if (T) msg.T = T;
       this.broadcast(msg);
       this.applyRound(msg, true);
     },
@@ -763,6 +773,16 @@
       const Gm = G.Game, MAP = G.MAP;
       if (!this.inGame || !d || typeof d.A !== 'object') return;
       Gm.round = num(d.n, Gm.round + 1) - 1;
+      let swapped = false;
+      if (d.T && typeof d.T === 'object') {
+        for (const e of Gm.entities) {
+          const t = d.T[e.nid];
+          if (t !== 'atk' && t !== 'def' || t === e.team) continue;
+          swapped = true;
+          if (e === Gm.player) Gm.setPlayerTeam(t); else if (e.setTeam) e.setTeam(t); else e.team = t;
+        }
+      }
+      if (d.sc) Gm.score = { atk: num(d.sc.atk), def: num(d.sc.def) };
       Gm.netRoundStart(String(d.sp || ''));
       const S = Gm.settings;
       const entries = MAP.entries.slice();
@@ -789,6 +809,8 @@
         }
       }
       G.Operators.reset();
+      G.Fort.startRound();
+      Gm.netRoundBanner(swapped);
       Gm.buildIcons();
       if (!local) G.Audio.beep(660, 0.12);
     },
@@ -816,7 +838,7 @@
       if (this.tickT >= TICK) { this.tickT = 0; this.sendTick(); }
     },
     playerState(p) {
-      return [p.nid, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.vel.x), r2(p.vel.z), r2(p.yaw), r2(p.pitch), r2(p.lean), r2(p.crouch), Math.ceil(p.hp), p.w ? p.w.def.key : 'ar'];
+      return [p.nid, r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.vel.x), r2(p.vel.z), r2(p.yaw), r2(p.pitch), r2(p.lean), r2(p.crouch), Math.ceil(p.hp), p.w ? p.w.def.key : 'ar', r2(p.ads || 0)];
     },
     sendTick() {
       const Gm = G.Game, rn = Gm.round;
@@ -900,6 +922,7 @@
         }
         case 'cells': this.applyCells(d.c); break;
         case 'bar': this.applyBars(d.b); break;
+        case 'fort': this.applying = true; G.Fort.applyNet(d); this.applying = false; break;
         case 'nade': {
           const e = this.byNid(d.id);
           if (!e || e === Gm.player || !Array.isArray(d.p) || !Array.isArray(d.v)) return;

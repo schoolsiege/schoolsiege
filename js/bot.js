@@ -25,9 +25,10 @@
     constructor(team, name, wkey) {
       this.team = team; this.name = name; this.isBot = true;
       this.def = G.WEAPONS[wkey];
+      this.scope = Math.random() < 0.45 ? '1.5' : 'std';
       this.pos = new V(); this.vel = new V(); this.want = new V();
       this.head = new V(); this.eye = new V(); this.chestA = new V(); this.chestB = new V(); this.legA = new V(); this.legB = new V();
-      this.model = G.buildCharacter(team, this.def.model);
+      this.model = G.buildCharacter(team, this.def.model, this.scope);
       G.scene.add(this.model.root);
       this.kills = 0; this.deaths = 0;
       this.goal = new V(); this.lastSeenPos = new V(); this.alertPos = new V(); this.perc = new V(); this.lookAt = new V(); this.spotLook = new V();

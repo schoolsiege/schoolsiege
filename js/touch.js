@@ -54,7 +54,7 @@
       this.touches.clear();
       this.fireCount = 0;
       I.lmb = false; I.rmb = false; I.joyX = 0; I.joyY = 0; I.joySprint = false;
-      I.keys.Tab = false; I.keys.Space = false; I.keys.ShiftLeft = false;
+      I.keys.Tab = false; I.keys.Space = false; I.keys.ShiftLeft = false; I.keys.KeyT = false;
       if (this.base) this.base.style.display = 'none';
       if (this.el) for (const b of this.el.querySelectorAll('.tb.held')) b.classList.remove('held');
     },
@@ -71,6 +71,7 @@
           case 'cams': I.pressed.Digit5 = true; info.role = 'none'; break;
           case 'drone': I.pressed.Digit6 = true; info.role = 'none'; break;
           case 'ability': I.pressed.KeyF = true; info.role = 'none'; break;
+          case 'fort': I.keys.KeyT = true; info.role = 'fort'; break;
           case 'scan': I.pressed.KeyX = true; info.role = 'none'; break;
           case 'prevCam': I.pressed.KeyQ = true; info.role = 'none'; break;
           case 'nextCam': I.pressed.KeyE = true; info.role = 'none'; break;
@@ -150,6 +151,7 @@
         else if (info.role === 'score') I.keys.Tab = false;
         else if (info.role === 'jump') I.keys.Space = false;
         else if (info.role === 'boost') I.keys.ShiftLeft = false;
+        else if (info.role === 'fort') I.keys.KeyT = false;
       }
     },
 

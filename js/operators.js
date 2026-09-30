@@ -37,6 +37,7 @@
       if (e.operator === 'sledge') {
         const h = G.W.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 2.3);
         if (!h || h.s.type !== 1) { if (e.isPlayer) G.Game.big('NO BREACHABLE SURFACE', 'Hammer works on soft walls and barricades'); return false; }
+        if (h.s.rf && h.s.rf[h.c]) { G.Audio.impact('metal', new V(h.x, h.y, h.z)); if (e.isPlayer) G.Game.big('REINFORCED WALL', 'Steel plating · find another way in'); return false; }
         this.breach(h, dir, 1.1);
         G.Audio.swing(eye, e.isPlayer); G.Audio.breakWall(new V(h.x, h.y, h.z));
         if (e.isPlayer) { e.meleeT = 0.55; e.meleeDone = true; G.Game.shake(0.12); }

@@ -97,3 +97,16 @@ body.padui #touch { visibility: hidden; }
 
 /* objective marker is positioned with transform (no layout per frame) */
 #objMarker { left: 0; top: 0; will-change: transform; }
+
+/* ---------- fortify (reinforce walls / barricade doors) ---------- */
+#fortPrompt { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+#fortPrompt.show { display: flex; }
+#fortText { font-size: 15px; font-weight: 700; letter-spacing: 2px; text-shadow: 0 1px 3px #000; color: #dff3ff; }
+#fortPrompt.bad #fortText { color: #ffb0a6; }
+#fortPrompt .fbar { width: 180px; height: 5px; background: rgba(0, 0, 0, 0.55); border-radius: 3px; overflow: hidden; }
+#fortPrompt.bad .fbar { display: none; }
+#fortFill { display: block; height: 100%; background: var(--def); transform: scaleX(0); transform-origin: left; will-change: transform; }
+#tFort:not(.show) { display: none !important; }
+body.touch #fortText { font-size: 13px; }
+body.kcOn #crosshair, body.kcOn #hint, body.kcOn #fortPrompt, body.kcOn #scopeShade { visibility: hidden; }
+body.mp #prepStart { display: none; }

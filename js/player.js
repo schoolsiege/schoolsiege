@@ -35,11 +35,12 @@
       }
       this.ci = 0;
     },
-    get(key, team) {
-      const k = key + team;
+    get(key, team, scope) {
+      const sight = G.sightFor(key, scope);
+      const k = key + team + sight;
       if (!this.guns[k]) {
         const def = G.WEAPONS[key];
-        const gun = G.buildGun(def.model, true);
+        const gun = G.buildGun(def.model, true, sight);
         G.buildVMArms(gun, team);
         gun.group.visible = false;
         gun.magBase = gun.mag ? gun.mag.position.clone() : null;
@@ -136,7 +137,7 @@
       this.deadT = 0; this.fallDir = new V();
       this.hurtT = 0;
       this.model.root.visible = false;
-      this.gun = VM.get(this.weapons[0].def.key, this.team);
+      this.gun = VM.get(this.weapons[0].def.key, this.team, G.Game.settings.scope);
       VM.show(this.gun);
       this.switchT = 0.45; this.switchTo = 0; this.swapped = true;
       G.updateHitShapes(this);
@@ -195,7 +196,7 @@
       const frozen = G.Game.state !== 'live';
 
       // ---------------- look
-      const adsSens = G.lerp(1, S.adsSens * (def.adsFov / S.fov), this.ads);
+      const adsSens = G.lerp(1, S.adsSens * (G.adsFov(def, S.scope) / S.fov), this.ads);
       const sens = 0.0022 * S.sens * adsSens;
       this.yaw -= I.mdx * sens; this.pitch -= I.mdy * sens;
       if (!frozen) G.Mods.aim(this, dt);
@@ -238,7 +239,9 @@
       G.rightFrom(this.yaw, _r);
       _d.set(0, 0, 0).addScaledVector(_f, fwd).addScaledVector(_r, str);
       if (_d.lengthSq() > 1) _d.normalize();
-      if (frozen) _d.set(0, 0, 0);
+      // defenders can walk around during the preparation phase to fortify
+      const still = frozen && !(G.Game.state === 'prep' && this.team === 'def' && !G.Game.hackerMode);
+      if (still) _d.set(0, 0, 0);
       const sprintKey = I.keys.ShiftLeft || I.joySprint;
       const touchFiring = G.Touch.enabled && I.lmb;
       const wantSprint = sprintKey && fwd > 0.5 && this.crouch < 0.5 && !I.rmb && this.meleeT <= 0 && !(I.lmb && this.reloadT <= 0) && !touchFiring;
@@ -266,7 +269,7 @@
         const acc = this.grounded ? 13 : 2.5;
         this.vel.x = G.damp(this.vel.x, _d.x * speed, acc, dt);
         this.vel.z = G.damp(this.vel.z, _d.z * speed, acc, dt);
-        if (I.pressed.Space && this.grounded && !frozen) {
+        if (I.pressed.Space && this.grounded && !still) {
           if (!this.tryVault()) { this.vy = 5.2; this.grounded = false; }
         }
         this.vy -= 18 * dt;
@@ -392,7 +395,7 @@
         this.switchT -= dt;
         if (!this.swapped && this.switchT < 0.25) {
           this.swapped = true; this.cur = this.switchTo;
-          this.gun = VM.get(this.w.def.key, this.team);
+          this.gun = VM.get(this.w.def.key, this.team, G.Game.settings.scope);
           VM.show(this.gun);
         }
       }
@@ -524,7 +527,10 @@
       if (!wh) return;
       const s = wh.s;
       G.Game.shake(0.08);
-      if (s.type === 1) {
+      if (s.type === 1 && s.rf && s.rf[wh.c]) {
+        G.Audio.impact('metal', new V(wh.x, wh.y, wh.z));
+        G.FX.impact(wh, 'metal', _f.x, _f.y, _f.z, false);
+      } else if (s.type === 1) {
         const n = s.kind === 'barricade'
           ? (G.W.hitBarricade(s, 34, _f.x, _f.y, _f.z) ? 1 : 0)
           : G.W.destroySphere(wh.x, wh.y, wh.z, 0.33, [s.kind], _f.x, _f.y, _f.z);
@@ -561,7 +567,7 @@
       cam.position.set(this.eye.x + _r.x * bobX, this.eye.y - bobY + this.stepOff, this.eye.z + _r.z * bobX);
       const sh = G.Game.shakeAmt;
       cam.rotation.set(this.pitch + this.punch + G.randn() * sh * 0.01, this.yaw + this.punchYaw + G.randn() * sh * 0.01, -this.lean * 0.2, 'YXZ');
-      const fov = G.lerp(S.fov, def.adsFov * (S.fov / 80), G.smooth(this.ads)) + this.sprint * 4;
+      const fov = G.lerp(S.fov, G.adsFov(def, S.scope) * (S.fov / 80), G.smooth(this.ads)) + this.sprint * 4;
       if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
       const vfov = G.lerp(62, 46, G.smooth(this.ads));
       if (Math.abs(VM.camera.fov - vfov) > 0.01) { VM.camera.fov = vfov; VM.camera.updateProjectionMatrix(); }

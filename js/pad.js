@@ -135,7 +135,16 @@
 
         this.holdKey('Space', now[B.A]);
         if (down(B.B)) I.pressed.KeyC = true;
-        if (down(B.X)) I.pressed.KeyR = true;
+        // X: tap = reload; hold = reinforce / barricade when you're looking at something to fortify
+        if (G.Fort && G.Fort.target) {
+          if (down(B.X)) this.xT = performance.now();
+          const held = performance.now() - (this.xT || 0);
+          this.holdKey('KeyT', now[B.X] && held > 200);
+          if (!now[B.X] && this.prev[B.X] && held <= 200) I.pressed.KeyR = true;
+        } else {
+          this.holdKey('KeyT', false);
+          if (down(B.X)) I.pressed.KeyR = true;
+        }
         if (down(B.Y)) { if (G.Game.state === 'prep') I.pressed.Enter = true; else I.wheel = 1; }
         if (down(B.RB)) I.pressed.KeyF = true;
         if (down(B.LB)) I.pressed.KeyG = true;

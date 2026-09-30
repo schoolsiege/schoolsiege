@@ -15,6 +15,11 @@
       hip: 0.025, ads: 0.004, move: 0.015, recoilV: 0.028, recoilH: 0.01, adsFov: 62, adsTime: 0.15, range: 80, wall: 9, fall: [12, 30, 0.65], hipPos: [0.16, -0.16, -0.42] },
   };
 
+  // sights: 'std' = the gun's own red dot / holo, '1.5' = 1.5x scope (not available on the sidearm)
+  G.sightFor = (key, scope) => (scope === '1.5' && key !== 'pistol' ? '1.5' : 'std');
+  G.adsFov = (def, scope) => (G.sightFor(def.key, scope) === '1.5'
+    ? (2 * Math.atan(Math.tan((def.adsFov * Math.PI) / 360) / 1.5) * 180) / Math.PI : def.adsFov);
+
   G.falloff = (def, d) => (d <= def.fall[0] ? 1 : d >= def.fall[1] ? def.fall[2] : G.lerp(1, def.fall[2], (d - def.fall[0]) / (def.fall[1] - def.fall[0])));
 
   // ---------------------------------------------------------------- HITBOXES
@@ -96,15 +101,15 @@
       }
       if (!wh) { end.set(x + dx * range, y + dy * range, z + dz * range); break; }
       end.set(wh.x, wh.y, wh.z);
-      const s = wh.s, phys = s.phys;
+      const s = wh.s, rf = s.type === 1 && s.rf && s.rf[wh.c], phys = rf ? 'metal' : s.phys;
       G.FX.impact(wh, phys, dx, dy, dz, (pelletIdx || 0) < 2 && Math.random() < 0.7);
       if (shooter.isPlayer && G.Mods.c.explosive && pens === 0) { G.Grenades.miniBlast(end, shooter); break; }
-      if (s.type === 1) {
+      if (s.type === 1 && !rf) {
         if (s.kind === 'barricade') G.W.hitBarricade(s, wallDmg * 1.2, dx, dy, dz);
         else G.W.damageCell(s, wh.c, wallDmg, dx, dy, dz);
         if (!s.cells[wh.c]) G.Game.soundEvent(end, 18, shooter.team, 'break');
       }
-      if (!s.pen || pens >= 2) break;
+      if (!s.pen || rf || pens >= 2) break;
       // continue through: exit of the solid (or of the cell)
       let exitT;
       if (s.type === 1) {
