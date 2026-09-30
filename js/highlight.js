@@ -76,7 +76,8 @@
         seen.add(e);
         const t = this.tag(e);
         const x = (_p.x * 0.5 + 0.5) * innerWidth, y = (-_p.y * 0.5 + 0.5) * innerHeight;
-        const vis = G.W.clear(cam.position.x, cam.position.y, cam.position.z, e.head.x, e.head.y, e.head.z);
+        if (!t._visN || --t._visN <= 0) { t._visN = 6; t._vis = G.W.clear(cam.position.x, cam.position.y, cam.position.z, e.head.x, e.head.y, e.head.z); }
+        const vis = t._vis;
         const d = Math.round(cam.position.distanceTo(e.pos));
         const label = vis ? e.name : `${e.name} · ${d}m`;
         if (t._label !== label) { t._label = label; t._name.textContent = label; }

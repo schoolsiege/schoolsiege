@@ -45,7 +45,8 @@
     isEnemy(a, b) { return a !== b && (this.hackerMode || a.team !== b.team); },
     // touch devices never use pointer lock
     get lockless() { return this.noLock || G.Touch.enabled || (G.Pad && G.Pad.active); },
-    pixelRatio() {
+    pixelRatio() { return this.basePixelRatio() * (G.Perf ? G.Perf.scale : 1); },
+    basePixelRatio() {
       const hi = this.settings.gfx === 'high';
       if (G.Touch.enabled) return Math.min(devicePixelRatio, hi ? 1.5 : 1);
       return Math.min(devicePixelRatio, hi ? 1.5 : 1);
@@ -98,7 +99,9 @@
       G.T.build();
       G.buildMaterials();
       G.FX.init(scene);
+      G.Perf.afterInit(r, sun, scene);
       G.buildMap(scene, this.settings.map);
+      G.Perf.afterMap();
       this.applyMapEnvironment();
       G.Nav.build();
       G.VM.init();
@@ -138,6 +141,7 @@
       if (G.MAP.id === def.id) return;
       G.FX.clear();
       G.buildMap(G.scene, def.id);
+      G.Perf.afterMap();
       this.applyMapEnvironment();
       G.Nav.build();
     },
@@ -160,6 +164,7 @@
       group('operatorChoices', 'op', 'operator');
       group('leanChoices', 'l', 'leanMode');
       group('gfxChoices', 'g', 'gfx', () => {
+        if ((S.gfx === 'low') !== G.Perf.low) { this.saveSettings(); $('loadMsg').textContent = 'Applying graphics settings…'; $('loading').style.display = 'flex'; setTimeout(() => location.reload(), 50); return; }
         const hi = S.gfx === 'high', t = G.Touch.enabled;
         this.renderer.setPixelRatio(this.pixelRatio());
         const ms = hi ? (t ? 2048 : 4096) : (t ? 1024 : 2048);
@@ -377,6 +382,7 @@
       G.Grenades.clear(); G.FX.clear(); G.W.resetPanels(); G.Nav.rebuildAll();
       if (G.Operators) G.Operators.clear();
       G.KillCam.reset();
+      G.Perf.shadowDirty = true;
       this.events = [];
       this.hc = {};
       this.secure = 0; this.timer = 180; this.spec = null; this.deathT = 0;
@@ -702,6 +708,7 @@
         G.Audio.setListener(cam.position, f, u);
         G.Audio.setAmbience(!G.MAP.indoors(cam.position.x, cam.position.z));
       }
+      G.Perf.frame(dt, cam);
       r.clear();
       r.render(G.scene, cam);
       G.Mods.renderChams(r, G.scene, cam);

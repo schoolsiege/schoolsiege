@@ -342,6 +342,7 @@
       if (fx && G.FX) G.FX.cellDebris(b, p.kind, dx || 0, dy || 0, dz || 0);
       if (G.Nav) G.Nav.dirty(b[0], b[2], b[3], b[5]);
       if (G.Net) G.Net.queueCell(p.id, ci);
+      if (G.Perf) G.Perf.shadowDirty = true;
     },
 
     // Barricades have an overall health pool: ~3 melee hits or ~6 rifle rounds knocks the whole thing down.
