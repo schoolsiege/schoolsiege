@@ -30,33 +30,36 @@
       }
       out.sight = { y, z: z - 0.034 };
     };
-    // compact 1.5x scope: short tube, wider objective bell, red chevron reticle
+    // 1.5x scope: short, fat round body on a boxy base; red circle + dot reticle with a post below
     const scope15 = (y, z) => {
-      B(M.gunDark, 0, y - 0.034, z, 0.028, 0.02, 0.08);
-      B(M.gunDark, 0, y - 0.022, z + 0.022, 0.018, 0.02, 0.012);
-      B(M.gunDark, 0, y - 0.022, z - 0.022, 0.018, 0.02, 0.012);
-      P.add(G.geo.cylOpen, M.sightTube, 0, y, z + 0.008, Math.PI / 2, 0, 0, 0.019, 0.1, 0.019);
-      P.add(G.geo.cylOpen, M.sightTube, 0, y, z - 0.05, Math.PI / 2, 0, 0, 0.025, 0.036, 0.025);
-      P.add(G.geo.torus, M.sightTube, 0, y, z + 0.058, 0, 0, 0, 0.02, 0.02, 0.03);
-      P.add(G.geo.torus, M.sightTube, 0, y, z - 0.068, 0, 0, 0, 0.0255, 0.0255, 0.03);
-      P.add(G.geo.torus, M.gunDark, 0, y, z - 0.03, 0, 0, 0, 0.0215, 0.0215, 0.06);
-      P.cyl(M.sightTube, 0, y + 0.021, z, 0.008, 0.012);
-      P.cyl(M.sightTube, 0.021, y, z, 0.008, 0.012, 'x');
+      const R = 0.028;
+      // base, mount and side housing
+      // (everything stays outside the tube so it never shows through the sight picture)
+      B(M.gunDark, 0, y - 0.047, z, 0.03, 0.016, 0.075);
+      B(M.sightTube, 0, y - 0.035, z, 0.056, 0.013, 0.062);
+      B(M.sightTube, 0.034, y - 0.012, z + 0.004, 0.01, 0.034, 0.05);
+      B(M.sightTube, -0.034, y - 0.012, z + 0.004, 0.01, 0.034, 0.05);
+      // fat body, front hood and rings
+      P.add(G.geo.cylOpen, M.sightTube, 0, y, z, Math.PI / 2, 0, 0, R, 0.07, R);
+      P.add(G.geo.cylOpen, M.sightTube, 0, y, z - 0.043, Math.PI / 2, 0, 0, R + 0.004, 0.02, R + 0.004);
+      P.add(G.geo.torus, M.sightTube, 0, y, z + 0.035, 0, 0, 0, R, R, 0.035);
+      P.add(G.geo.torus, M.sightTube, 0, y, z - 0.053, 0, 0, 0, R + 0.004, R + 0.004, 0.035);
+      P.add(G.geo.torus, M.gunDark, 0, y, z - 0.012, 0, 0, 0, R + 0.001, R + 0.001, 0.05);
+      // angled adjuster on top-right
+      B(M.sightTube, 0.017, y + 0.026, z + 0.006, 0.016, 0.014, 0.022, 0, 0, -0.7);
       if (vm) {
         const lens = new THREE.Mesh(G.geo.circle, M.sightGlass);
-        lens.scale.setScalar(0.024); lens.position.set(0, y, z - 0.064);
+        lens.scale.setScalar(R - 0.002); lens.position.set(0, y, z - 0.048);
         group.add(lens);
-        const red = (sx, sy, x, yy, rz) => {
-          const m = new THREE.Mesh(G.geo.plane, M.redDot);
-          m.scale.set(sx, sy, 1); m.position.set(x, yy, z - 0.066); m.rotation.z = rz || 0; m.renderOrder = 10;
-          group.add(m);
-        };
-        // chevron + thin horizontal stadia
-        red(0.0045, 0.0007, -0.0015, y - 0.0013, 0.8); red(0.0045, 0.0007, 0.0015, y - 0.0013, -0.8);
-        red(0.009, 0.00045, -0.012, y, 0); red(0.009, 0.00045, 0.012, y, 0);
-        red(0.00045, 0.008, 0, y - 0.009, 0);
+        const rz = z - 0.05;
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.0021, 0.0027, 28), M.redDot);
+        ring.position.set(0, y, rz); ring.renderOrder = 10; group.add(ring);
+        const dot = new THREE.Mesh(G.geo.circle, M.redDot);
+        dot.scale.setScalar(0.00055); dot.position.set(0, y, rz); dot.renderOrder = 10; group.add(dot);
+        const post = new THREE.Mesh(G.geo.plane, M.redDot);
+        post.scale.set(0.0005, 0.0075, 1); post.position.set(0, y - 0.0027 - 0.00375, rz); post.renderOrder = 10; group.add(post);
       }
-      out.sight = { y, z: z - 0.066 };
+      out.sight = { y, z: z - 0.05 };
     };
     const scoped = sight === '1.5' && kind !== 'pistol';
     const optic = (y, z) => (scoped ? scope15(y, z) : redDot(y, z));
